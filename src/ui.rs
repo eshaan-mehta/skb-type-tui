@@ -5,7 +5,7 @@ use std::ops::Range;
 use ratatui::layout::{Alignment, Constraint, Layout as Split, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
+use ratatui::widgets::{Block, BorderType, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::{
@@ -17,7 +17,7 @@ use crate::geometry::KEY_COUNT;
 use crate::layout::{Layout, Press};
 use crate::ngrams;
 use crate::stats::MIN_SAMPLES;
-use crate::store::{Keyboard, Mode};
+use crate::store::{Keyboard, Mode, Settings};
 use crate::theme;
 use crate::typing::TypingTest;
 
@@ -880,12 +880,62 @@ fn popup(f: &mut Frame, w: u16, h: u16, title: &str) -> Rect {
     inner
 }
 
+/// Lines under the settings for what the selected one is.
+const ABOUT_H: u16 = 2;
+
+/// What a setting is, shown under the list while it's selected. Mode and Cursor describe the
+/// current choice (Cursor with an example, which `draw_settings` puts the real cursor in).
+fn setting_about(item: &str, s: &Settings) -> Vec<Line<'static>> {
+    let text = match item {
+        "Mode" => s.mode.about(),
+        "Hints" => "Outline the next key to press on the board, plus any shift or layer key you need to hold for it.",
+        "Cursor" => return vec![Line::styled(s.cursor.about(), dim()), cursor_example()],
+        "Instant death" => "End the test on your first mistake. A test that ends that way can only be retried.",
+        "Words" => "How many words each test has.",
+        "Word list" => {
+            "Your own words, from a text file, kept as written (so capitals and punctuation count). Empty for the built-in words."
+        }
+        "Target speed" => {
+            "The speed a letter needs to count as learned in progressive mode, and a test needs to move on in n-grams mode."
+        }
+        "Target accuracy" => "The accuracy a letter, or an n-grams test, needs alongside the target speed.",
+        "Focus tests per letter" => {
+            "How many progressive tests a letter has to be the focus of before it can count as learned. 0 turns this off."
+        }
+        "Board" => "The keyboard you're using, drawn with your layout as you type. Only the ZSA Voyager is supported for now.",
+        "Edit layout" => "Fix by hand any keys your board's layout got wrong. Your fixes stay on top of it.",
+        "Refetch layout from board" => "Fetch your board's layout from Oryx again.",
+        "Reset progress" => "Clear your letter stats, progressive unlocks and n-grams progress. Your settings and layout stay.",
+        "Quit" => "Close the app.",
+        _ => "",
+    };
+    vec![Line::styled(text, dim())]
+}
+
+/// The cursor example: a word partly typed, styled like the test text.
+const EXAMPLE_LEAD: &str = "looks like  ";
+const EXAMPLE_TYPED: &str = "typ";
+
+/// A word being typed, for the terminal's own cursor to sit in (on the next letter), just as it
+/// does in a test. A drawn cursor would take up a letter's space; the real one doesn't.
+fn cursor_example() -> Line<'static> {
+    Line::from(vec![Span::styled(EXAMPLE_LEAD, dim()), Span::raw(EXAMPLE_TYPED), Span::styled("ing", untyped())])
+}
+
 fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
     let s = &app.store.saved.settings;
-    let inner = popup(f, POPUP_W, SETTINGS_ITEMS.len() as u16 + 5, "settings");
+    // The list, a gap, what the selected setting is, and what's being typed or searched.
+    let inner = popup(f, POPUP_W, SETTINGS_ITEMS.len() as u16 + 3 + ABOUT_H + 1, "settings");
+    let [list, _, about, status_area] = Split::vertical([
+        Constraint::Length(SETTINGS_ITEMS.len() as u16),
+        Constraint::Length(1),
+        Constraint::Length(ABOUT_H),
+        Constraint::Length(1),
+    ])
+    .areas(inner.inner(ratatui::layout::Margin { horizontal: 1, vertical: 0 }));
     let accent = Style::new().fg(theme::ACCENT);
 
-    let mut lines: Vec<Line> = SETTINGS_ITEMS
+    let lines: Vec<Line> = SETTINGS_ITEMS
         .iter()
         .enumerate()
         .map(|(i, name)| {
@@ -923,14 +973,14 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
             Line::styled(format!("{marker}{name:<42}{value:>20}"), style)
         })
         .collect();
-    lines.push(Line::default());
+    f.render_widget(Paragraph::new(lines), list);
 
-    // Status line: number entry help/error, or the type-to-jump search.
-    // Bottom of the popup: what's being typed or searched, and details/errors. Keys are in the
+    // Bottom of the popup: what's being typed or searched, with errors and help. Keys are in the
     // screen's bottom bar like everywhere else.
-    let mut detail = Line::default();
+    let mut about_lines = setting_about(SETTINGS_ITEMS[menu.selected], s);
     let status = match &menu.editing {
-        // The path gets the whole status line; hints and errors take the help line.
+        // The path gets the whole status line; what goes in the file, or what's wrong with it,
+        // takes the description's place.
         Some(entry) if entry.is_path => {
             let room = inner.width.saturating_sub(10) as usize;
             let chars: Vec<char> = entry.text.chars().collect();
@@ -939,10 +989,10 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
             } else {
                 entry.text.clone()
             };
-            detail = match &entry.error {
+            about_lines = vec![match &entry.error {
                 Some(err) => Line::styled(err.clone(), Style::new().fg(theme::MISTAKE)),
                 None => Line::styled("words separated by spaces or new lines · empty for built-in", dim()),
-            };
+            }];
             Line::from(vec![Span::styled("file: ", dim()), Span::styled(format!("{shown}▏"), accent)])
         }
         Some(entry) => match &entry.error {
@@ -962,9 +1012,15 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
         }
         None => Line::default(),
     };
-    lines.push(status);
-    lines.push(detail);
-    f.render_widget(Paragraph::new(lines), inner.inner(ratatui::layout::Margin { horizontal: 1, vertical: 0 }));
+    f.render_widget(Paragraph::new(about_lines).wrap(Wrap { trim: true }), about);
+    // On Cursor, show the real cursor in the example (on the line under the description).
+    if SETTINGS_ITEMS[menu.selected] == "Cursor" && menu.editing.is_none() {
+        let x = about.x + (EXAMPLE_LEAD.len() + EXAMPLE_TYPED.len()) as u16;
+        if about.height > 1 && x < about.right() {
+            f.set_cursor_position((x, about.y + 1));
+        }
+    }
+    f.render_widget(Paragraph::new(status), status_area);
 }
 
 /// The keyboards to pick from, the one plugged in tagged "detected", with names `name_w` wide.
@@ -1173,6 +1229,34 @@ fn centered(area: Rect, width: u16) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::CursorStyle;
+
+    #[test]
+    fn every_setting_is_described_in_two_lines() {
+        // The popup's inside, less its margins.
+        let width = (POPUP_W - 4) as usize;
+        let fits = |line: &Line| {
+            let text: Vec<char> = line.to_string().chars().collect();
+            !text.is_empty() && wrap(&text, width).len() <= ABOUT_H as usize
+        };
+        for item in SETTINGS_ITEMS {
+            let about = setting_about(item, &Settings::default());
+            assert!(about.iter().all(fits) && about.len() <= ABOUT_H as usize, "{item}");
+        }
+        for mode in Mode::ALL {
+            let s = Settings { mode, ..Default::default() };
+            assert!(setting_about("Mode", &s).iter().all(fits), "{}", mode.name());
+        }
+        // A line each, so the example (and the cursor put in it) is on the second.
+        for cursor in CursorStyle::ALL {
+            let s = Settings { cursor, ..Default::default() };
+            let about = setting_about("Cursor", &s);
+            assert_eq!(about.len(), 2, "a line, then an example");
+            for line in about {
+                assert_eq!(wrap(&line.to_string().chars().collect::<Vec<_>>(), width).len(), 1, "{line}");
+            }
+        }
+    }
 
     #[test]
     fn plot_lines_are_braille_dots() {

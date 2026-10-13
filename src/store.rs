@@ -34,6 +34,20 @@ impl Mode {
         }
     }
 
+    /// What the mode does, for the settings menu.
+    pub fn about(self) -> &'static str {
+        match self {
+            Mode::Progressive => {
+                "Learn your layout a few letters at a time, starting from your home row. Learn them all to unlock the next."
+            }
+            Mode::WeakKeys => "Practice the letters you're slowest or least accurate on: the words lean toward them.",
+            Mode::Ngrams => {
+                "Drill the most common letter sequences (th, the, tion), three at a time. Beat your targets on a test to move on."
+            }
+            Mode::Words => "A plain test of random common words.",
+        }
+    }
+
     /// Whether the mode works from the letters on the user's layout.
     pub fn needs_layout(self) -> bool {
         matches!(self, Mode::Progressive | Mode::WeakKeys)
@@ -85,6 +99,15 @@ impl CursorStyle {
             CursorStyle::Line => "line",
             CursorStyle::Block => "block",
             CursorStyle::Underscore => "underscore",
+        }
+    }
+
+    /// What it looks like, for the settings menu.
+    pub fn about(self) -> &'static str {
+        match self {
+            CursorStyle::Line => "A thin bar just before the next letter.",
+            CursorStyle::Block => "A box over the next letter.",
+            CursorStyle::Underscore => "A line under the next letter.",
         }
     }
 }
