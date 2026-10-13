@@ -3,6 +3,8 @@
 //! Real words are used when enough of them can be spelled with the allowed letters.
 //! Otherwise the gaps are filled with pronounceable pseudo-words from a letter model
 //! trained on English words ("tesh", "rean", ...), like keybr does.
+//!
+//! Also builds n-grams mode drills.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -16,6 +18,8 @@ const END: char = '$';
 const REAL_WORDS_FOR_FULL_TEXT: f64 = 40.0;
 const MIN_LEN: usize = 2;
 const MAX_LEN: usize = 7;
+/// In n-grams mode, the most words in a row on one n-gram.
+const DRILL_RUN: usize = 6;
 
 /// Letter-transition counts: what follows a pair of letters, and what follows one letter.
 pub struct LetterModel {
@@ -99,7 +103,7 @@ fn weighted<T: Copy>(rng: &mut impl Rng, options: &[(T, f64)]) -> Option<T> {
 pub struct Generator {
     /// Words for words mode, as written.
     plain: Vec<String>,
-    /// Words the letter-filtered modes pick from.
+    /// Words the other modes pick from.
     corpus: Vec<String>,
     model: LetterModel,
 }
@@ -180,6 +184,49 @@ impl Generator {
         }
         out.join(" ")
     }
+
+    /// N-grams mode: each of `ngrams` typed on its own a few times, then in real words that
+    /// have it, taking turns until there are `count` words.
+    pub fn ngram_drill(&self, rng: &mut impl Rng, ngrams: &[&str], count: usize) -> String {
+        if ngrams.is_empty() {
+            return self.random_words(rng, count);
+        }
+        let words: Vec<Vec<&str>> = ngrams
+            .iter()
+            .map(|g| {
+                self.corpus
+                    .iter()
+                    .map(String::as_str)
+                    .filter(|w| w.contains(g) && w != g && w.chars().all(|c| c.is_ascii_lowercase()))
+                    .collect()
+            })
+            .collect();
+        // A run of words on each, shorter in a short test so they all come up: the first half
+        // the n-gram alone, the rest words with it (or more of it alone, if no words have it).
+        let run = (count / ngrams.len()).clamp(2, DRILL_RUN);
+        let alone = run.div_ceil(2);
+        let mut out: Vec<&str> = Vec::with_capacity(count);
+        'fill: loop {
+            for (g, words) in ngrams.iter().zip(&words) {
+                for i in 0..run {
+                    if out.len() == count {
+                        break 'fill;
+                    }
+                    if i < alone || words.is_empty() {
+                        out.push(g);
+                        continue;
+                    }
+                    let mut w = words[rng.random_range(0..words.len())];
+                    // Not the same word twice in a row, when there's a choice.
+                    while words.len() > 1 && out.last() == Some(&w) {
+                        w = words[rng.random_range(0..words.len())];
+                    }
+                    out.push(w);
+                }
+            }
+        }
+        out.join(" ")
+    }
 }
 
 #[cfg(test)]
@@ -237,6 +284,35 @@ mod tests {
         let with_o = text.split(' ').filter(|w| w.contains('o')).count();
         assert!(with_o >= 15, "{with_o}: {text}");
     }
+
+    #[test]
+    fn ngram_drills() {
+        let g = Generator::new(None);
+        let mut rng = StdRng::seed_from_u64(6);
+        let set = ["th", "the", "tion"];
+        let text = g.ngram_drill(&mut rng, &set, 25);
+        let words: Vec<&str> = text.split(' ').collect();
+        assert_eq!(words.len(), 25);
+        // Each n-gram alone a few times, then words with it.
+        assert_eq!(words[..3], ["th", "th", "th"]);
+        assert!(words[3..6].iter().all(|w| w.contains("th") && *w != "th"), "{text}");
+        assert_eq!(words[6..9], ["the", "the", "the"]);
+        assert_eq!(words[12..15], ["tion", "tion", "tion"]);
+        assert!(words[15..18].iter().all(|w| w.contains("tion") && *w != "tion"), "{text}");
+        assert!(words.iter().all(|w| set.iter().any(|g| w.contains(g))), "{text}");
+        // A short test still gets to all of them.
+        let short = g.ngram_drill(&mut rng, &set, 6);
+        assert_eq!(short.split(' ').filter(|w| set.contains(w)).count(), 3, "{short}");
+    }
+
+    #[test]
+    fn ngram_drills_without_words_use_the_ngram() {
+        let custom: Vec<String> = ["rust", "Trust!"].iter().map(|w| w.to_string()).collect();
+        let g = Generator::new(Some(&custom));
+        let mut rng = StdRng::seed_from_u64(7);
+        assert_eq!(g.ngram_drill(&mut rng, &["ing"], 5), "ing ing ing ing ing");
+        assert_eq!(g.ngram_drill(&mut rng, &["us"], 4), "us us rust rust");
+    }
 }
 
 #[cfg(test)]
@@ -253,6 +329,9 @@ mod samples {
             let allowed: BTreeSet<char> = letters.chars().collect();
             println!("[{letters}] ({} real words)", g.real_words(&allowed).len());
             println!("  {}\n", g.text(&mut rng, &allowed, &|_| 1.0, letters.chars().last(), 20));
+        }
+        for i in 0..3 {
+            println!("{:?}\n  {}\n", crate::ngrams::set(i), g.ngram_drill(&mut rng, &crate::ngrams::set(i), 25));
         }
     }
 }

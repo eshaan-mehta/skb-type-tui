@@ -16,19 +16,27 @@ pub enum Mode {
     Progressive,
     /// Practice the letters you're slowest or least accurate on.
     WeakKeys,
+    /// Drill common letter sequences ("th", "ing", "tion") a few at a time.
+    Ngrams,
     /// Random common words.
     Words,
 }
 
 impl Mode {
-    pub const ALL: [Mode; 3] = [Mode::Progressive, Mode::WeakKeys, Mode::Words];
+    pub const ALL: [Mode; 4] = [Mode::Progressive, Mode::WeakKeys, Mode::Ngrams, Mode::Words];
 
     pub fn name(self) -> &'static str {
         match self {
             Mode::Progressive => "progressive",
             Mode::WeakKeys => "weak keys",
+            Mode::Ngrams => "n-grams",
             Mode::Words => "words",
         }
+    }
+
+    /// Whether the mode works from the letters on the user's layout.
+    pub fn needs_layout(self) -> bool {
+        matches!(self, Mode::Progressive | Mode::WeakKeys)
     }
 }
 
@@ -65,9 +73,10 @@ pub struct Settings {
     /// End the test on the first wrong key.
     pub instant_death: bool,
     pub word_count: usize,
-    /// Per-letter speed needed to unlock the next letter in progressive mode.
+    /// Per-letter speed needed to unlock the next letter in progressive mode, and test speed
+    /// needed to move on in n-grams mode.
     pub target_wpm: u32,
-    /// Per-letter accuracy (percent) needed alongside the speed.
+    /// Accuracy (percent) needed alongside the speed.
     pub target_accuracy: u32,
     /// The user's own word list (absolute path); None uses the built-in words.
     pub word_file: Option<String>,

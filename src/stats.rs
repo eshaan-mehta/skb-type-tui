@@ -186,14 +186,21 @@ pub struct Stats {
     pub letters: BTreeMap<char, LetterStats>,
     /// Letters unlocked in progressive mode, in unlock order. Only ever grows.
     pub unlocked: Vec<char>,
+    /// How many sets of the n-grams course have been passed.
+    pub ngram_sets: usize,
 }
 
 impl Stats {
     /// Keep stats honest when the layout changes: a different layout starts over, and a
-    /// letter that moved to another key loses its stats (it's a new key to learn).
+    /// letter that moved to another key loses its stats (it's a new key to learn). Stats from
+    /// before there was any layout (only n-grams progress) carry over to the first one.
     pub fn sync_layout(&mut self, layout: &Layout) {
-        if self.layout_id.as_deref() != Some(layout.layout_id.as_str()) {
-            *self = Stats { layout_id: Some(layout.layout_id.clone()), ..Default::default() };
+        match &self.layout_id {
+            Some(id) if *id != layout.layout_id => {
+                *self = Stats { layout_id: Some(layout.layout_id.clone()), ..Default::default() };
+            }
+            Some(_) => {}
+            None => self.layout_id = Some(layout.layout_id.clone()),
         }
         for (c, s) in self.letters.iter_mut() {
             let now = layout.find_char(*c).map(|h| (h.layer, h.key));
@@ -385,6 +392,17 @@ mod tests {
         s.record(&[hit, miss], &layout);
         s.update_learned(&p, t);
         assert!(!s.letter('e').learned);
+    }
+
+    #[test]
+    fn ngram_progress_carries_over_to_the_first_layout() {
+        let mut s = Stats { ngram_sets: 4, ..Default::default() };
+        s.sync_layout(&gallium());
+        assert_eq!(s.ngram_sets, 4);
+        let mut other = gallium();
+        other.layout_id = "other".into();
+        s.sync_layout(&other);
+        assert_eq!(s.ngram_sets, 0, "a different layout starts over");
     }
 
     #[test]

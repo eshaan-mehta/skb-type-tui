@@ -1,5 +1,5 @@
-//! Word lists. `ENGLISH_200` is for the plain word test; `corpus()` adds `MORE` for the
-//! letter-filtered modes (progressive, weak keys) and for training the pseudo-word model.
+//! Word lists. `ENGLISH_200` is for the plain word test; `corpus()` adds `MORE` and
+//! `PATTERN_WORDS` for the other modes and for training the pseudo-word model.
 
 pub const ENGLISH_200: &[&str] = &[
     "the", "be", "of", "and", "a", "to", "in", "he", "have", "it", "that", "for", "they", "i", "with", "as",
@@ -105,6 +105,38 @@ pub const MORE: &[&str] = &[
     "wrong", "yard", "yellow", "yes", "yet", "young", "youth", "zero", "zone", "zoo",
 ];
 
+/// Words carrying the n-grams mode sequences (`ngrams`), which the lists above have few of:
+/// mostly longer and inflected forms (-ing, -tion, -ed, ...).
+pub const PATTERN_WORDS: &[&str] = &[
+    "according", "acting", "action", "active", "actually", "advanced", "agreement", "although", "apartment",
+    "appearance", "available", "balance", "beginning", "bought", "bringing", "brothers", "brought", "building",
+    "capable", "capture", "chemical", "classical", "collection", "commission", "company", "compare", "compared",
+    "comparison", "complete", "completely", "complex", "computer", "conclusion", "conference", "connection",
+    "conscious", "consent", "considered", "consist", "consistent", "constant", "consumer", "contact",
+    "contains", "content", "context", "continue", "continued", "contract", "contrast", "control", "covered",
+    "covering", "created", "creative", "critical", "culture", "decision", "department", "difference",
+    "direction", "discovered", "discovery", "discussion", "distance", "division", "education", "effective",
+    "enable", "entering", "equally", "especially", "everyone", "everything", "everywhere", "evidence",
+    "existence", "existing", "expected", "experience", "expression", "feature", "finally", "finding", "formal",
+    "formation", "formed", "former", "forms", "formula", "function", "furniture", "generally", "getting",
+    "government", "gradually", "hands", "hearing", "hence", "historical", "holding", "importance", "impression",
+    "including", "influence", "instance", "insurance", "interests", "internal", "leading", "learning",
+    "letters", "limited", "literature", "located", "management", "meaning", "medical", "meeting", "members",
+    "mental", "mission", "mixture", "moreover", "movement", "national", "native", "naturally", "negative",
+    "normally", "noted", "objective", "occasion", "offering", "opening", "operation", "others", "ought",
+    "overall", "painting", "particular", "parties", "partly", "partner", "parts", "perform", "performed",
+    "personal", "persons", "physical", "points", "political", "population", "positive", "practical",
+    "preparing", "presence", "presented", "president", "pressure", "problems", "process", "production",
+    "protection", "provided", "providing", "reaction", "reading", "really", "reasonable", "recovery",
+    "reference", "reform", "regarding", "related", "relation", "relations", "relative", "remaining",
+    "remarkable", "repeated", "reported", "represent", "resistance", "running", "section", "selection",
+    "sensitive", "separated", "setting", "several", "severe", "sitting", "situation", "stable", "standing",
+    "started", "stated", "statement", "string", "structure", "suitable", "technical", "testing", "though",
+    "throughout", "training", "treated", "treatment", "turning", "typical", "unable", "understand", "uniform",
+    "united", "usually", "valuable", "version", "vision", "waiting", "wanted", "whatever", "whenever", "within",
+    "workers", "writing",
+];
+
 /// Largest word file we'll read, so a wrong path (a video, say) fails fast.
 const MAX_WORD_FILE_BYTES: u64 = 5 * 1024 * 1024;
 
@@ -130,7 +162,7 @@ pub fn load_word_file(path: &std::path::Path) -> Result<Vec<String>, String> {
 /// All words, without duplicates.
 pub fn corpus() -> Vec<&'static str> {
     let mut seen = std::collections::HashSet::new();
-    ENGLISH_200.iter().chain(MORE).copied().filter(|w| seen.insert(*w)).collect()
+    ENGLISH_200.iter().chain(MORE).chain(PATTERN_WORDS).copied().filter(|w| seen.insert(*w)).collect()
 }
 
 #[cfg(test)]
@@ -139,7 +171,7 @@ mod tests {
 
     #[test]
     fn words_are_plain_lowercase() {
-        for w in ENGLISH_200.iter().chain(MORE) {
+        for w in ENGLISH_200.iter().chain(MORE).chain(PATTERN_WORDS) {
             assert!(w.chars().all(|c| c.is_ascii_lowercase()), "{w}");
         }
     }

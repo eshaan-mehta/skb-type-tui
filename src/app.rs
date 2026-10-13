@@ -17,6 +17,7 @@ use crate::generator::Generator;
 use crate::geometry::{self, KEY_COUNT};
 use crate::keycode;
 use crate::layout::{Action, Edit, Key, Layout, Press};
+use crate::ngrams;
 use crate::oryx;
 use crate::stats::{Progression, Stats, Targets};
 use crate::store::{CursorStyle, LayoutRef, Mode, Store, TARGET_ACCURACY_RANGE, TARGET_WPM_RANGE, WORD_COUNT_RANGE};
@@ -253,6 +254,10 @@ pub struct App {
     pub progression: Option<Progression>,
     /// Letter unlocked by the test that just finished.
     pub just_unlocked: Option<char>,
+    /// The n-grams course set the current test drills (`Stats::ngram_sets` when it was made).
+    test_ngram_set: Option<usize>,
+    /// The test that just finished passed its n-grams set.
+    pub ngrams_passed: bool,
     /// The custom word list in use, if any.
     pub word_list: Option<WordList>,
     generator: Generator,
@@ -295,6 +300,8 @@ impl App {
             stats,
             progression: None,
             just_unlocked: None,
+            test_ngram_set: None,
+            ngrams_passed: false,
             word_list,
             generator: Generator::new(custom.as_deref()),
             last_press: None,
@@ -537,12 +544,19 @@ impl App {
 
     /// Whether the chosen mode can't run because there's no layout yet.
     pub fn mode_needs_layout(&self) -> bool {
-        self.store.saved.settings.mode != Mode::Words && self.layout.is_none()
+        self.store.saved.settings.mode.needs_layout() && self.layout.is_none()
+    }
+
+    /// The n-grams the current set of the n-grams course practices.
+    pub fn ngram_set(&self) -> [&'static str; 3] {
+        ngrams::set(self.stats.ngram_sets)
     }
 
     /// Build the next test for the current mode.
     fn make_test(&mut self) -> TypingTest {
         self.just_unlocked = None;
+        self.ngrams_passed = false;
+        self.test_ngram_set = None;
         let count = self.store.saved.settings.word_count;
         let target = self.targets();
         let mut rng = rand::rng();
@@ -565,6 +579,10 @@ impl App {
                 let weight = |c: char| stats.weakness(c, target);
                 TypingTest::from_text(&self.generator.text(&mut rng, &allowed, &weight, focus, count))
             }
+            (Mode::Ngrams, _, _) => {
+                self.test_ngram_set = Some(self.stats.ngram_sets);
+                TypingTest::from_text(&self.generator.ngram_drill(&mut rng, &self.ngram_set(), count))
+            }
             _ => TypingTest::from_text(&self.generator.random_words(&mut rng, count)),
         }
     }
@@ -572,12 +590,22 @@ impl App {
     fn finish_test(&mut self) {
         self.screen = Screen::Results(ResultsView::new(self.test.timeline()));
         let t = self.targets();
-        let (Some(layout), Some(p)) = (&self.layout, &self.progression) else { return };
-        self.stats.record(&self.test.keystrokes_log, layout);
-        self.stats.update_learned(p, t);
-        // A failed (instant death) test still counts toward letter stats, but never unlocks.
-        if self.store.saved.settings.mode == Mode::Progressive && !self.test.is_failed() {
-            self.just_unlocked = self.stats.maybe_unlock(p);
+        let mode = self.store.saved.settings.mode;
+        self.just_unlocked = None;
+        // A failed (instant death) test still counts toward letter stats, but never moves you on.
+        let completed = !self.test.is_failed();
+        let passed = completed && self.test.wpm() >= t.wpm && self.test.accuracy() >= 100.0 * t.accuracy;
+        self.ngrams_passed = passed && self.test_ngram_set.is_some();
+        if let Some(set) = self.test_ngram_set.filter(|_| passed) {
+            // Passing a retried set again doesn't skip the one after it.
+            self.stats.ngram_sets = self.stats.ngram_sets.max(set + 1);
+        }
+        if let (Some(layout), Some(p)) = (&self.layout, &self.progression) {
+            self.stats.record(&self.test.keystrokes_log, layout);
+            self.stats.update_learned(p, t);
+            if mode == Mode::Progressive && completed {
+                self.just_unlocked = self.stats.maybe_unlock(p);
+            }
         }
         self.save_stats();
     }

@@ -5,6 +5,7 @@ mod generator;
 mod geometry;
 mod keycode;
 mod layout;
+mod ngrams;
 mod oryx;
 mod stats;
 mod store;

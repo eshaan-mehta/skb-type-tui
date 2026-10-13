@@ -77,10 +77,14 @@ you back. Each new letter needs a little more practice than the one before.
 ### More ways to practice
 
 - **Weak keys** mode weights the words toward the letters you're slowest or least accurate on.
+- **N-grams** mode drills the most common letter sequences in English, three at a time: a pair, a triple and a
+  longer one (`th the tion`, then `he and ation`, `in ing ther`, …). Each is typed on its own a few times, then
+  in real words. Reach your speed and accuracy targets on a test to move on to the next set; until then you
+  keep practising the same one. There are 30 sets, and it starts over after the last.
 - **Words** mode is a plain test of random common English words.
 - **Bring your own words.** Point it at any text file and tests draw random words from it, kept exactly as
   written, so capitals and punctuation count. Progressive and weak keys modes use the words from it that fit
-  the letters you're practising.
+  the letters you're practising, and n-grams mode the ones with the sequence you're on.
 - **The usual options:** words per test, instant death (the first mistake ends the test), and a line, block or
   underscore cursor.
 
@@ -185,17 +189,17 @@ border says how to press it (`hold`, `2×`, `t+hld`).
 
 | Setting | |
 | --- | --- |
-| Mode | progressive, weak keys or words |
+| Mode | progressive, weak keys, n-grams or words |
 | Hints | outline the next key to press on the board |
 | Cursor | line, block or underscore (it's your terminal's own cursor, so its color comes from your terminal theme) |
 | Instant death | end the test on the first mistake |
 | Words | words per test (5–500) |
 | Word list | path to a text file of your own words (separated by spaces or new lines); leave empty for the built-in words |
-| Target speed | the speed a letter needs to count as learned in progressive mode (10–200 wpm) |
-| Target accuracy | the accuracy it needs alongside that (50–100%) |
+| Target speed | the speed a letter needs to count as learned in progressive mode, and a test needs to move on in n-grams mode (10–200 wpm) |
+| Target accuracy | the accuracy they need alongside that (50–100%) |
 | Edit layout | fix keys by hand |
 | Refetch layout from board | fetch your flashed layout from Oryx again |
-| Reset progress | clear your letter stats and progressive unlocks |
+| Reset progress | clear your letter stats, progressive unlocks and n-grams progress |
 
 ## How it works
 
@@ -212,6 +216,8 @@ border says how to press it (`hold`, `2×`, `t+hld`).
 - **Progression** (`src/stats.rs`, `src/generator.rs`): the starting letters come from your resting keys, and
   the unlock order weighs how easy each key is to reach against how common its letter is. Made-up words come
   from a letter model trained on the built-in word list. Each letter's speed and accuracy are running averages.
+- **N-grams** (`src/ngrams.rs`): the sequences are ranked by how often they occur inside words in Google Books,
+  from Peter Norvig's [Mayzner Revisited](https://norvig.com/mayzner.html) counts.
 
 Settings, cached layouts and stats are kept in your config directory:
 `~/Library/Application Support/zsa-typer-tui` on macOS, `~/.config/zsa-typer-tui` on Linux.

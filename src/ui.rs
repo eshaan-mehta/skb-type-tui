@@ -15,6 +15,7 @@ use crate::app::{
 use crate::board::{Board, HintRole, KeyVisual, Marker, Scale};
 use crate::geometry::KEY_COUNT;
 use crate::layout::{Layout, Press};
+use crate::ngrams;
 use crate::stats::MIN_SAMPLES;
 use crate::store::Mode;
 use crate::theme;
@@ -224,8 +225,14 @@ fn progress_line(t: &TypingTest, width: usize) -> Line<'static> {
     ])
 }
 
+/// The n-grams of a set, spaced apart.
+fn ngram_set_span(set: [&str; 3], style: Style) -> Span<'static> {
+    Span::styled(set.join("  "), style)
+}
+
 /// What the current mode is working on: the letter strip in progressive mode, the weakest
-/// letters in weak keys mode. (The line under it names the mode, so this doesn't.)
+/// letters in weak keys mode, the set in n-grams mode. (The line under it names the mode, so
+/// this doesn't.)
 fn mode_line(app: &App) -> Line<'static> {
     let s = &app.store.saved.settings;
     let target = s.targets();
@@ -254,6 +261,21 @@ fn mode_line(app: &App) -> Line<'static> {
                 spans.push(Span::styled(format!("  focus {c}"), dim()));
             }
             Line::from(spans)
+        }
+        Mode::Ngrams => {
+            let set = app.stats.ngram_sets % ngrams::SETS + 1;
+            Line::from(vec![
+                ngram_set_span(app.ngram_set(), Style::new().fg(theme::ACCENT).bold()),
+                Span::styled(
+                    format!(
+                        "   set {set} of {} · reach {} wpm and {}% to move on",
+                        ngrams::SETS,
+                        s.target_wpm,
+                        s.target_accuracy
+                    ),
+                    dim(),
+                ),
+            ])
         }
         Mode::WeakKeys => {
             let weak = app.stats.weakest(3, target);
@@ -456,6 +478,10 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
         Some(c) => Line::from(vec![
             Span::styled("new letter unlocked: ", Style::new().fg(theme::CORRECT)),
             Span::styled(c.to_string(), Style::new().fg(theme::CORRECT).bold()),
+        ]),
+        None if app.ngrams_passed => Line::from(vec![
+            Span::styled("passed! next up  ", Style::new().fg(theme::CORRECT)),
+            ngram_set_span(app.ngram_set(), Style::new().fg(theme::CORRECT).bold()),
         ]),
         None => mode_line(app),
     });
