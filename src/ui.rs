@@ -480,18 +480,28 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView, popup_keys: Option
     let area = f.area();
     let t = &app.test;
     if view.expanded {
-        // Just the graph, as big as the screen.
-        let [_, chart_head, chart, _, foot] = Split::vertical([
-            Constraint::Length(1),
-            Constraint::Length(1),
+        // Just the graph, centered on the screen: a title, its keys, its header, then the graph,
+        // 60% as tall as it would be filling the rest of the screen.
+        let chart_h = area.height.saturating_sub(BOTTOM_H + 1 + 1 + 1) * 3 / 5;
+        let [_, title, sub, _, keys, _, chart_head, chart, _] = Split::vertical([
             Constraint::Fill(1),
             Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
             Constraint::Length(BOTTOM_H),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(chart_h),
+            Constraint::Fill(1),
         ])
         .areas(area);
+        let center = |line: Line<'static>| Paragraph::new(line).alignment(Alignment::Center);
+        f.render_widget(center(Line::styled("Expanded graph", Style::new().bold())), title);
+        let about = "each second of the test in detail · step through it for the exact numbers";
+        f.render_widget(center(Line::styled(about, dim())), sub);
         let chart_w = area.width.saturating_sub(4);
+        draw_bottom(f, app, keys, &["←→/hl inspect · ↑↓/jk wpm/accuracy · e/esc shrink"]);
         draw_chart(f, view, centered(chart_head, chart_w), centered(chart, chart_w));
-        draw_bottom(f, app, foot, &["←→/hl inspect · ↑↓/jk wpm/accuracy · e/esc shrink"]);
         return;
     }
 
