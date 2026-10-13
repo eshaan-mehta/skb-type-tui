@@ -295,7 +295,8 @@ fn letter_strip(app: &App) -> Line<'static> {
     let mut spans = Vec::new();
     for c in &p.order {
         let style = if !app.stats.unlocked.contains(c) {
-            dim()
+            // Barely there (just dimmed gray if the terminal didn't say what its colors are).
+            theme::locked().map_or_else(untyped, |c| Style::new().fg(c))
         } else if app.stats.letter(*c).learned {
             Style::new().fg(theme::CORRECT)
         } else {

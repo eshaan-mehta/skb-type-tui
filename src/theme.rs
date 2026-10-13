@@ -34,6 +34,8 @@ type Rgb = ((u8, u8, u8), (u8, u8, u8));
 
 /// Opacity of faded text (what's behind a menu).
 const FADED_ALPHA: f64 = 0.1;
+/// Opacity of letters progressive mode hasn't unlocked yet.
+const LOCKED_ALPHA: f64 = 0.2;
 
 /// Ask the terminal what its text and background colors are, with the standard OSC 10/11
 /// queries most terminals answer. Call it before taking over the terminal, since the answer
@@ -45,12 +47,22 @@ pub fn detect() {
     let _ = TERMINAL.set(colors);
 }
 
-/// Text at `FADED_ALPHA` opacity, in light and dark themes alike. Terminals can't draw
-/// see-through text, so this mixes the terminal's text color into its background color.
-/// None if the terminal didn't say what those are.
+/// Text faded into the background, behind a menu (`FADED_ALPHA`).
 pub fn faded() -> Option<Color> {
+    see_through(FADED_ALPHA)
+}
+
+/// Letters not unlocked yet (`LOCKED_ALPHA`).
+pub fn locked() -> Option<Color> {
+    see_through(LOCKED_ALPHA)
+}
+
+/// Text at `alpha` opacity, in light and dark themes alike. Terminals can't draw see-through
+/// text, so this mixes the terminal's text color into its background color. None if the
+/// terminal didn't say what those are.
+fn see_through(alpha: f64) -> Option<Color> {
     let (text, background) = (*TERMINAL.get()?)?;
-    Some(blend(background, text, FADED_ALPHA))
+    Some(blend(background, text, alpha))
 }
 
 /// `share` of the way from color `a` to color `b`.
