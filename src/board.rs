@@ -134,13 +134,13 @@ fn look(k: &KeyVisual) -> Look {
         None => {}
     }
     let label = if k.dim { Style::new().fg(Color::DarkGray) } else { Style::new().fg(Color::Reset) };
-    let line = match k.marker {
-        Some(Marker::Changed) => Some(theme::CHANGED),
-        Some(Marker::Edited) => Some(theme::EDITED),
-        Some(Marker::Missed) => Some(theme::MISTAKE),
-        None => None,
-    };
-    Look { line, label }
+    match k.marker {
+        Some(Marker::Changed) => Look { line: Some(theme::CHANGED), label },
+        Some(Marker::Edited) => Look { line: Some(theme::EDITED), label },
+        // Red label too, so the keys you missed stand out at a glance.
+        Some(Marker::Missed) => outline(theme::MISTAKE, Style::new().fg(theme::MISTAKE).add_modifier(Modifier::BOLD)),
+        None => Look { line: None, label },
+    }
 }
 
 pub struct Board<'a> {
@@ -290,6 +290,27 @@ mod tests {
         // The keys above and below are untouched.
         assert_eq!(buf[(x, y - 1)].fg, gray);
         assert_eq!(buf[(x, y + 3)].fg, gray);
+    }
+
+    #[test]
+    fn missed_keys_are_red_label_and_all() {
+        let mut keys: [KeyVisual; KEY_COUNT] = std::array::from_fn(|_| KeyVisual { label: "x".into(), ..Default::default() });
+        keys[13].marker = Some(Marker::Missed);
+        let scale = Scale { key_w: 7 };
+        let area = Rect::new(0, 0, scale.width(), scale.height());
+        let mut buf = Buffer::empty(area);
+        Board { keys: &keys, scale }.render(area, &mut buf);
+
+        let x = (KEYS[13].x * 7.0) as u16;
+        let y = scale.y(KEYS[13].y);
+        let label = (x + 1..x + 6).find(|&dx| buf[(dx, y + 1)].symbol() == "x").unwrap();
+        assert_eq!(buf[(label, y + 1)].fg, theme::MISTAKE);
+        assert_eq!(buf[(x + 1, y)].fg, theme::MISTAKE, "and the outline");
+        // Other keys' labels are as usual.
+        let other = (KEYS[14].x * 7.0) as u16;
+        let other_y = scale.y(KEYS[14].y) + 1;
+        let label = (other + 1..other + 6).find(|&dx| buf[(dx, other_y)].symbol() == "x").unwrap();
+        assert_eq!(buf[(label, other_y)].fg, Color::Reset);
     }
 
     #[test]
