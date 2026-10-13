@@ -693,11 +693,12 @@ impl App {
         let Screen::Results(view) = &mut self.screen else { return };
         let last = view.timeline.len().saturating_sub(1);
         match key.code {
-            // Graph: move the cursor through the test, switch between wpm and accuracy.
-            KeyCode::Left | KeyCode::Char('h') => view.cursor = view.cursor.saturating_sub(1),
-            KeyCode::Right | KeyCode::Char('l') => view.cursor = (view.cursor + 1).min(last),
-            KeyCode::Home => view.cursor = 0,
-            KeyCode::End => view.cursor = last,
+            // Expanded graph: move the cursor through the test to read its numbers.
+            KeyCode::Left | KeyCode::Char('h') if view.expanded => view.cursor = view.cursor.saturating_sub(1),
+            KeyCode::Right | KeyCode::Char('l') if view.expanded => view.cursor = (view.cursor + 1).min(last),
+            KeyCode::Home if view.expanded => view.cursor = 0,
+            KeyCode::End if view.expanded => view.cursor = last,
+            // Switch the graph between wpm and accuracy.
             KeyCode::Up | KeyCode::Down | KeyCode::Char('k') | KeyCode::Char('j') | KeyCode::Char('v') => {
                 view.chart = match view.chart {
                     ChartView::Wpm => ChartView::Accuracy,

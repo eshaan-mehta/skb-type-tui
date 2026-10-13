@@ -93,8 +93,8 @@ practice than the one before.
 ### Results
 
 After each test you get wpm, raw speed, accuracy and the keys you missed, plus a graph of the test second by
-second (wpm and raw, or accuracy) with mistakes marked. Step through it to read the exact numbers at any
-second, or expand it to fill the screen for more detail.
+second (wpm and raw, or accuracy) with mistakes marked. Expand it to fill the screen and step through it to
+read the exact numbers at any second.
 
 ```
                                 69 wpm     98% acc
@@ -105,21 +105,22 @@ second, or expand it to fill the screen for more detail.
 
            a s d l f k j e i h t o r n u c g m w y p b v x q z   focus j
 
-                wpm  accuracy      20.9s  wpm 69  raw 79  errors 0
-150 ┤┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈│
-    │                                                                            │
-    │                                                                            │
-100 ┤┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈⢀⣀⣠⠤⠤⠤⣄⣀⢀⣠⠴⠋⠉⠓⠲⠤⣄⣀┈│
+                  tab next test · r retry · esc settings · q quit
+
+                                  wpm  accuracy
+150 ┤┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    │
+    │
+100 ┤┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈⢀⣀⣠⠤⠤⠤⣄⣀⢀⣠⠴⠋⠉⠓⠲⠤⣄⣀┈┈
     │⠤⠤⠤⠤⠤⢤⣀⣀⣀⡀               ⣠⠞⠉⠙⠒⠦⢤⣀⣀⣀⣠⠤⠖⠋⠓⠦⣄⣀     ⣀⣀⣀    ⢀⡴⠋      ⠈⠉⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀
- 50 ┤⠉⠉┈┈┈┈⠉⠉⠓⠉⠉⠉⠉⠉⠉⠉⠓⠒⠒×⠒⠒⠦⠤⠖⠒⠒⠒⠒⠒⠒⠒⠒⠚⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉×⠒⠋⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠁┈┈┈┈┈┈┈┈┈│
-    │                     ⠈⠙⠋                             ⠉⠁                     │
-    │                                                                            │
-  0 ┤                                                                            │
+ 50 ┤⠉⠉┈┈┈┈⠉⠉⠓⠉⠉⠉⠉⠉⠉⠉⠓⠒⠒×⠒⠒⠦⠤⠖⠒⠒⠒⠒⠒⠒⠒⠒⠚⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉×⠒⠋⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠁┈┈┈┈┈┈┈┈┈┈
+    │                     ⠈⠙⠋                             ⠉⠁
+    │
+  0 ┤
     └───────────────┬──────────────────┬──────────────────┬───────────────────────
                    5s                 10s                15s                 20.9s
 
-                   ←→/hl inspect · ↑↓/jk wpm/accuracy · e expand
-                  tab next test · r retry · esc settings · q quit
+                          ↑↓/jk wpm/accuracy · e expand
 ```
 
 No Voyager plugged in? It still works as a typing test, just without the board on screen.
@@ -177,7 +178,8 @@ layer changes either, so the overlay flashes keys based on what you type and sta
 | Where | Keys |
 | --- | --- |
 | Typing | type to start · `tab` new test · `esc` settings · `ctrl+w` / `alt+backspace` delete a word · `ctrl+c` quit |
-| Results | `tab` / `enter` next test · `r` retry the same text · `←→` / `h l` step through the graph (`home` / `end` jump to the ends) · `↑↓` / `j k` switch between the wpm and accuracy graphs · `e` expand the graph (`e` / `esc` to shrink) · `esc` settings · `q` quit |
+| Results | `tab` / `enter` next test · `r` retry the same text · `↑↓` / `j k` switch between the wpm and accuracy graphs · `e` expand the graph · `esc` settings · `q` quit |
+| Expanded graph | `←→` / `h l` step through the test (`home` / `end` jump to the ends) · `↑↓` / `j k` wpm or accuracy · `e` / `esc` shrink |
 | Settings | `↑↓` / `j k` move · type a setting's name to jump to it · `enter` change · `←→` adjust · `esc` close |
 | Layout editor | arrows, or press a key on the board, to select · `enter` change the key · `del` undo your change · `tab` next layer · `ctrl+s` save · `esc` cancel |
 

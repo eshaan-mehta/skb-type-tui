@@ -405,38 +405,14 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
             Constraint::Length(1),
             Constraint::Fill(1),
             Constraint::Length(1),
-            Constraint::Length(BOTTOM_H + 1),
+            Constraint::Length(BOTTOM_H),
         ])
         .areas(area);
         let chart_w = area.width.saturating_sub(4);
         draw_chart(f, view, centered(chart_head, chart_w), centered(chart, chart_w));
-        draw_bottom(f, app, foot, &["←→/hl inspect · ↑↓/jk wpm/accuracy · e/esc shrink", "tab next test · r retry · q quit"]);
+        draw_bottom(f, app, foot, &["←→/hl inspect · ↑↓/jk wpm/accuracy · e/esc shrink"]);
         return;
     }
-    // Status, summary, gap, graph header, graph, gap, footer; the board only if it still fits.
-    let fixed = 1 + 7 + 1 + 1 + CHART_H + 1 + 1 + BOTTOM_H + 1;
-    let show_board = app.device.is_connected() && app.layout.is_some();
-    let scale = if show_board { Scale::fit(area.width, area.height.saturating_sub(fixed + 2)) } else { None };
-
-    // After a test the next step matters more than the keyboard, so the actions sit right
-    // under the graph (where the eyes are) and the board goes below them.
-    let [status, _, summary, _, chart_head, chart, foot, _, board, _] = Split::vertical([
-        Constraint::Length(1),
-        Constraint::Fill(1),
-        Constraint::Length(7),
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Length(CHART_H),
-        Constraint::Length(BOTTOM_H + 1),
-        Constraint::Length(1),
-        Constraint::Length(scale.map_or(0, |s| s.height())),
-        Constraint::Fill(1),
-    ])
-    .areas(area);
-    let chart_w = CHART_MAX_W.min(area.width.saturating_sub(4));
-    draw_chart(f, view, centered(chart_head, chart_w), centered(chart, chart_w));
-
-    f.render_widget(Paragraph::new(status_line(app)).alignment(Alignment::Center), status);
 
     let missed = t.most_missed(5);
     let missed_line = if let Some((typed, expected)) = t.last_mistake().filter(|_| t.is_failed()) {
@@ -485,7 +461,38 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
         ]),
         None => mode_line(app),
     });
+    let summary_h = lines.len() as u16;
+
+    // Status, summary, actions, graph header, graph, its keys (with gaps); the board only if
+    // it still fits.
+    let fixed = 1 + summary_h + 1 + 1 + 1 + 1 + CHART_H + BOTTOM_H + 1;
+    let show_board = app.device.is_connected() && app.layout.is_some();
+    let scale = if show_board { Scale::fit(area.width, area.height.saturating_sub(fixed + 2)) } else { None };
+
+    // After a test the next step matters more than the graph or the keyboard, so the actions
+    // sit right under the summary (where the eyes are), the graph's own keys under it.
+    let [status, _, summary, _, actions, _, chart_head, chart, foot, _, board, _] = Split::vertical([
+        Constraint::Length(1),
+        Constraint::Fill(1),
+        Constraint::Length(summary_h),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(CHART_H),
+        Constraint::Length(BOTTOM_H),
+        Constraint::Length(1),
+        Constraint::Length(scale.map_or(0, |s| s.height())),
+        Constraint::Fill(1),
+    ])
+    .areas(area);
+
+    f.render_widget(Paragraph::new(status_line(app)).alignment(Alignment::Center), status);
     f.render_widget(Paragraph::new(lines).alignment(Alignment::Center), summary);
+    let keys = "tab next test · r retry · esc settings · q quit";
+    f.render_widget(Paragraph::new(Line::styled(keys, dim())).alignment(Alignment::Center), actions);
+    let chart_w = CHART_MAX_W.min(area.width.saturating_sub(4));
+    draw_chart(f, view, centered(chart_head, chart_w), centered(chart, chart_w));
 
     if let (Some(scale), Some(layout)) = (scale, app.layout.as_ref()) {
         let layer = app.shown_layer();
@@ -501,12 +508,11 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
         f.render_widget(Board { keys: &keys, scale }, board);
     }
 
-    // The graph's keys first, then everything else.
-    draw_bottom(f, app, foot, &["←→/hl inspect · ↑↓/jk wpm/accuracy · e expand", "tab next test · r retry · esc settings · q quit"]);
+    draw_bottom(f, app, foot, &["↑↓/jk wpm/accuracy · e expand"]);
 }
 
 /// The results graph: running wpm and per-second raw (or running accuracy), red dots where
-/// mistakes happened, and a cursor with the values at that second.
+/// mistakes happened, and, when expanded, a cursor with the values at that second.
 fn draw_chart(f: &mut Frame, view: &ResultsView, head: Rect, area: Rect) {
     let tl = &view.timeline;
     if tl.len() < 2 {
@@ -518,33 +524,33 @@ fn draw_chart(f: &mut Frame, view: &ResultsView, head: Rect, area: Rect) {
     let errors_style = Style::new().fg(theme::MISTAKE);
     let cur = &tl[view.cursor.min(tl.len() - 1)];
 
-    // Header: which graph (the other one dim), then the values under the cursor.
+    // Header: which graph (the other one dim), then, when expanded, the values under the
+    // cursor. (Otherwise they'd only repeat the summary above.)
     let tab = |name: &'static str, on: bool| {
         Span::styled(name, if on { accent.bold().underlined() } else { dim() })
     };
-    let secs = fmt_secs(cur.t);
     let mut spans = vec![
         tab("wpm", view.chart == ChartView::Wpm),
         Span::raw("  "),
         tab("accuracy", view.chart == ChartView::Accuracy),
-        Span::raw("      "),
-        Span::styled(secs, Style::new().bold()),
-        Span::raw("  "),
     ];
-    match view.chart {
-        ChartView::Wpm => spans.extend([
-            Span::styled("wpm ", dim()),
-            Span::styled(format!("{:.0}", cur.wpm), accent.bold()),
-            Span::styled("  raw ", dim()),
-            Span::styled(format!("{:.0}", cur.raw), Style::new().bold()),
-        ]),
-        ChartView::Accuracy => spans.extend([
-            Span::styled("accuracy ", dim()),
-            Span::styled(format!("{:.0}%", cur.accuracy), accent.bold()),
-        ]),
+    if view.expanded {
+        spans.extend([Span::raw("      "), Span::styled(fmt_secs(cur.t), Style::new().bold()), Span::raw("  ")]);
+        match view.chart {
+            ChartView::Wpm => spans.extend([
+                Span::styled("wpm ", dim()),
+                Span::styled(format!("{:.0}", cur.wpm), accent.bold()),
+                Span::styled("  raw ", dim()),
+                Span::styled(format!("{:.0}", cur.raw), Style::new().bold()),
+            ]),
+            ChartView::Accuracy => spans.extend([
+                Span::styled("accuracy ", dim()),
+                Span::styled(format!("{:.0}%", cur.accuracy), accent.bold()),
+            ]),
+        }
+        spans.push(Span::styled("  errors ", dim()));
+        spans.push(Span::styled(cur.errors.to_string(), if cur.errors > 0 { errors_style.bold() } else { Style::new().bold() }));
     }
-    spans.push(Span::styled("  errors ", dim()));
-    spans.push(Span::styled(cur.errors.to_string(), if cur.errors > 0 { errors_style.bold() } else { Style::new().bold() }));
     f.render_widget(Paragraph::new(Line::from(spans)).alignment(Alignment::Center), head);
 
     // The plot fills the area down to the x axis and its labels; taller plots get finer ticks.
@@ -626,9 +632,11 @@ fn draw_chart(f: &mut Frame, view: &ResultsView, head: Rect, area: Rect) {
     }
 
     // Cursor first so the lines cross over it, then raw under the main line, then mistakes.
-    let cursor_col = plot.col(cur.t);
-    for y in plot.top..plot.top + plot.height {
-        buf[(cursor_col, y)].set_char('│').set_style(Style::new().fg(theme::MISTAKE));
+    if view.expanded {
+        let cursor_col = plot.col(cur.t);
+        for y in plot.top..plot.top + plot.height {
+            buf[(cursor_col, y)].set_char('│').set_style(Style::new().fg(theme::MISTAKE));
+        }
     }
     match view.chart {
         ChartView::Wpm => plot.draw_lines(buf, &[(&raw, raw_style), (&main, accent)]),
