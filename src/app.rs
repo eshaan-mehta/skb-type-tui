@@ -234,7 +234,7 @@ pub struct ResultsView {
 }
 
 impl ResultsView {
-    fn new(timeline: Vec<Second>) -> Self {
+    pub fn new(timeline: Vec<Second>) -> Self {
         let cursor = timeline.len().saturating_sub(1);
         ResultsView { chart: ChartView::Wpm, cursor, timeline, expanded: false }
     }
@@ -593,6 +593,15 @@ impl App {
         self.screen = Screen::Typing;
     }
 
+    /// Back from a menu to the test: its results if it's over, otherwise the test itself.
+    fn back_to_test(&mut self) {
+        self.screen = if self.test.is_finished() {
+            Screen::Results(ResultsView::new(self.test.timeline()))
+        } else {
+            Screen::Typing
+        };
+    }
+
     fn targets(&self) -> Targets {
         self.store.saved.settings.targets()
     }
@@ -824,15 +833,15 @@ impl App {
         }
     }
 
-    /// Leave the keyboard picker: for the typing screen at first launch, otherwise back to the
-    /// settings it was opened from.
+    /// Leave the keyboard picker: for the test at first launch, otherwise back to the settings
+    /// it was opened from.
     fn close_board_picker(&mut self, onboarding: bool) {
-        self.screen = if onboarding {
-            Screen::Typing
+        if onboarding {
+            self.back_to_test();
         } else {
             let selected = SETTINGS_ITEMS.iter().position(|s| *s == "Board").unwrap_or(0);
-            Screen::Settings(SettingsMenu { selected, ..Default::default() })
-        };
+            self.screen = Screen::Settings(SettingsMenu { selected, ..Default::default() });
+        }
     }
 
     /// Use `board` from now on, and load its layout.
@@ -915,7 +924,7 @@ impl App {
         let n = SETTINGS_ITEMS.len();
         match key.code {
             KeyCode::Esc if !menu.search.is_empty() => menu.search.clear(),
-            KeyCode::Esc => self.screen = Screen::Typing,
+            KeyCode::Esc => self.back_to_test(),
             KeyCode::Up | KeyCode::Char('k') => {
                 menu.selected = (menu.selected + n - 1) % n;
                 menu.search.clear();
@@ -1078,7 +1087,7 @@ impl App {
                 DeviceState::Connected { firmware_id: Some(id), .. } => match oryx::parse_firmware_id(&id) {
                     Some((l, r)) => {
                         self.start_fetch(&l, &r);
-                        self.screen = Screen::Typing;
+                        self.back_to_test();
                         self.set_notice("Fetching your layout from Oryx…");
                     }
                     None => self.set_notice("Your board's firmware isn't an Oryx layout, so there's nothing to fetch."),
@@ -1172,11 +1181,13 @@ impl App {
         if !self.test.is_started() {
             self.test = self.make_test();
         }
+        self.back_to_test();
         self.set_notice("Layout saved.");
     }
 
     fn cancel_editor(&mut self) {
         let Screen::Editor(ed) = std::mem::replace(&mut self.screen, Screen::Typing) else { return };
+        self.back_to_test();
         match ed.purpose {
             EditorPurpose::NewRevision => self.set_notice("Kept your previous layout. Refetch from settings to review the new one."),
             EditorPurpose::Onboarding | EditorPurpose::Manual if self.layout.is_none() => {

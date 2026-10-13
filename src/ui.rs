@@ -37,17 +37,27 @@ fn untyped() -> Style {
 pub fn draw(f: &mut Frame, app: &App) {
     match &app.screen {
         Screen::Typing => draw_typing(f, app, typing_actions(app)),
-        Screen::Results(view) => draw_results(f, app, view),
+        Screen::Results(view) => draw_results(f, app, view, None),
         Screen::Settings(menu) => {
-            draw_typing(f, app, settings_actions(menu));
+            draw_under_popup(f, app, settings_actions(menu));
             draw_settings(f, app, menu);
         }
         Screen::Editor(ed) => draw_editor(f, app, ed),
         Screen::Board(picker) if picker.onboarding => draw_board_picker(f, app, picker),
         Screen::Board(picker) => {
-            draw_typing(f, app, "↑↓/jk choose · enter confirm · esc back");
+            draw_under_popup(f, app, "↑↓/jk choose · enter confirm · esc back");
             draw_board_popup(f, app, picker);
         }
+    }
+}
+
+/// What a popup opens over, faded, with the popup's `keys` at the bottom: the test's results if
+/// it's over (that's where closing the popup goes back to), otherwise the test.
+fn draw_under_popup(f: &mut Frame, app: &App, keys: &str) {
+    if app.test.is_finished() {
+        draw_results(f, app, &ResultsView::new(app.test.timeline()), Some(keys));
+    } else {
+        draw_typing(f, app, keys);
     }
 }
 
@@ -465,7 +475,8 @@ const CHART_H: u16 = 11;
 /// Widest the results graph gets.
 const CHART_MAX_W: u16 = 100;
 
-fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
+/// The results screen; under a popup when there are `popup_keys` (the popup's, for the bottom).
+fn draw_results(f: &mut Frame, app: &App, view: &ResultsView, popup_keys: Option<&str>) {
     let area = f.area();
     let t = &app.test;
     if view.expanded {
@@ -589,8 +600,18 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
         f.render_widget(Board { keys: &keys, scale }, board);
     }
 
-    let graph_keys: &[&str] = if view.has_graph() { &["↑↓/jk wpm/accuracy · e expand"] } else { &[""] };
-    draw_bottom(f, app, foot, graph_keys);
+    match popup_keys {
+        // Under a popup, everything fades back but the popup's keys.
+        Some(keys) => {
+            f.buffer_mut().set_style(area, faded());
+            f.buffer_mut().set_style(foot, Style::reset());
+            draw_bottom(f, app, foot, &[keys]);
+        }
+        None => {
+            let graph_keys: &[&str] = if view.has_graph() { &["↑↓/jk wpm/accuracy · e expand"] } else { &[""] };
+            draw_bottom(f, app, foot, graph_keys);
+        }
+    }
 }
 
 /// The results graph: running wpm and per-second raw (or running accuracy), red dots where
