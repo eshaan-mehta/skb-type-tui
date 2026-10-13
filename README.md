@@ -71,9 +71,10 @@ details come from your layout instead of assuming QWERTY:
 - the letter that needs the most work comes up more often, and gets drilled in common patterns too (`on on`,
   `ion ion`, `tion tion` for an `o`).
 
-A new letter unlocks once every current letter is learned, meaning you've beaten your speed and accuracy
-targets on it by a small margin. It stays learned unless you fall well below them, so one bad test doesn't set
-you back. Each new letter needs a little more practice than the one before.
+A new letter unlocks once every current letter is learned, meaning it's been the focus of 10 tests (you can
+change how many) and you've beaten your speed and accuracy targets on it by a small margin. It stays learned
+unless you fall well below them, so one bad test doesn't set you back. Each new letter needs a little more
+practice than the one before.
 
 ### More ways to practice
 
@@ -198,6 +199,7 @@ border says how to press it (`hold`, `2×`, `t+hld`).
 | Word list | path to a text file of your own words (separated by spaces or new lines); leave empty for the built-in words |
 | Target speed | the speed a letter needs to count as learned in progressive mode, and a test needs to move on in n-grams mode (10–200 wpm) |
 | Target accuracy | the accuracy they need alongside that (50–100%) |
+| Focus tests per letter | how many tests a letter has to be the focus of, in progressive mode, before it can count as learned (0–20; 0 turns this off) |
 | Edit layout | fix keys by hand |
 | Refetch layout from board | fetch your flashed layout from Oryx again |
 | Reset progress | clear your letter stats, progressive unlocks and n-grams progress |

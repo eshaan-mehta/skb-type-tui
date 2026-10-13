@@ -78,6 +78,8 @@ pub struct Settings {
     pub target_wpm: u32,
     /// Accuracy (percent) needed alongside the speed.
     pub target_accuracy: u32,
+    /// Progressive tests a letter has to be the focus of before it can count as learned.
+    pub focus_tests: u32,
     /// The user's own word list (absolute path); None uses the built-in words.
     pub word_file: Option<String>,
 }
@@ -85,6 +87,7 @@ pub struct Settings {
 pub const TARGET_WPM_RANGE: std::ops::RangeInclusive<u32> = 10..=200;
 pub const TARGET_ACCURACY_RANGE: std::ops::RangeInclusive<u32> = 50..=100;
 pub const WORD_COUNT_RANGE: std::ops::RangeInclusive<u32> = 5..=500;
+pub const FOCUS_TESTS_RANGE: std::ops::RangeInclusive<u32> = 0..=20;
 
 impl Default for Settings {
     fn default() -> Self {
@@ -96,6 +99,7 @@ impl Default for Settings {
             word_count: 25,
             target_wpm: 30,
             target_accuracy: 95,
+            focus_tests: 10,
             word_file: None,
         }
     }
@@ -105,7 +109,8 @@ impl Settings {
     pub fn targets(&self) -> Targets {
         let wpm = self.target_wpm.clamp(*TARGET_WPM_RANGE.start(), *TARGET_WPM_RANGE.end());
         let acc = self.target_accuracy.clamp(*TARGET_ACCURACY_RANGE.start(), *TARGET_ACCURACY_RANGE.end());
-        Targets { wpm: wpm as f64, accuracy: acc as f64 / 100.0 }
+        let focus_tests = self.focus_tests.min(*FOCUS_TESTS_RANGE.end());
+        Targets { wpm: wpm as f64, accuracy: acc as f64 / 100.0, focus_tests }
     }
 }
 

@@ -20,11 +20,13 @@ use crate::layout::{Action, Edit, Key, Layout, Press};
 use crate::ngrams;
 use crate::oryx;
 use crate::stats::{Progression, Stats, Targets};
-use crate::store::{CursorStyle, LayoutRef, Mode, Store, TARGET_ACCURACY_RANGE, TARGET_WPM_RANGE, WORD_COUNT_RANGE};
+use crate::store::{
+    CursorStyle, LayoutRef, Mode, Store, FOCUS_TESTS_RANGE, TARGET_ACCURACY_RANGE, TARGET_WPM_RANGE, WORD_COUNT_RANGE,
+};
 use crate::typing::{Second, TypingTest};
 use crate::ui;
 
-pub const SETTINGS_ITEMS: [&str; 12] = [
+pub const SETTINGS_ITEMS: [&str; 13] = [
     "Mode",
     "Hints",
     "Cursor",
@@ -33,6 +35,7 @@ pub const SETTINGS_ITEMS: [&str; 12] = [
     "Word list",
     "Target speed",
     "Target accuracy",
+    "Focus tests per letter",
     "Edit layout",
     "Refetch layout from board",
     "Reset progress",
@@ -54,6 +57,7 @@ pub fn number_field(item: &str) -> Option<(std::ops::RangeInclusive<u32>, u32)> 
         "Words" => Some((WORD_COUNT_RANGE, 5)),
         "Target speed" => Some((TARGET_WPM_RANGE, 5)),
         "Target accuracy" => Some((TARGET_ACCURACY_RANGE, 1)),
+        "Focus tests per letter" => Some((FOCUS_TESTS_RANGE, 1)),
         _ => None,
     }
 }
@@ -254,6 +258,8 @@ pub struct App {
     pub progression: Option<Progression>,
     /// Letter unlocked by the test that just finished.
     pub just_unlocked: Option<char>,
+    /// The letter the current progressive test focuses on, counted when it's finished.
+    test_focus: Option<char>,
     /// The n-grams course set the current test drills (`Stats::ngram_sets` when it was made).
     test_ngram_set: Option<usize>,
     /// The test that just finished passed its n-grams set.
@@ -300,6 +306,7 @@ impl App {
             stats,
             progression: None,
             just_unlocked: None,
+            test_focus: None,
             test_ngram_set: None,
             ngrams_passed: false,
             word_list,
@@ -556,6 +563,7 @@ impl App {
     fn make_test(&mut self) -> TypingTest {
         self.just_unlocked = None;
         self.ngrams_passed = false;
+        self.test_focus = None;
         self.test_ngram_set = None;
         let count = self.store.saved.settings.word_count;
         let target = self.targets();
@@ -565,6 +573,7 @@ impl App {
                 self.stats.ensure_started(p);
                 let allowed: BTreeSet<char> = self.stats.unlocked.iter().copied().collect();
                 let focus = self.stats.focus(target);
+                self.test_focus = focus;
                 let stats = &self.stats;
                 let weight = |c: char| {
                     let w = 1.0 + 2.0 * stats.weakness(c, target);
@@ -604,6 +613,9 @@ impl App {
         }
         if let (Some(layout), Some(p)) = (&self.layout, &self.progression) {
             self.stats.record(&self.test.keystrokes_log, layout);
+            if completed && let Some(c) = self.test_focus {
+                self.stats.count_focus_test(c);
+            }
             self.stats.update_learned(p, t);
             if mode == Mode::Progressive && completed {
                 self.just_unlocked = self.stats.maybe_unlock(p);
@@ -806,6 +818,7 @@ impl App {
             "Words" => s.word_count as u32,
             "Target speed" => s.target_wpm,
             "Target accuracy" => s.target_accuracy,
+            "Focus tests per letter" => s.focus_tests,
             _ => 0,
         }
     }
@@ -816,6 +829,7 @@ impl App {
             "Words" => s.word_count = v as usize,
             "Target speed" => s.target_wpm = v,
             "Target accuracy" => s.target_accuracy = v,
+            "Focus tests per letter" => s.focus_tests = v,
             _ => return,
         }
         self.persist();
@@ -1073,6 +1087,8 @@ mod tests {
         assert_eq!(name("reset"), Some("Reset progress"));
         assert_eq!(name("acc"), Some("Target accuracy"));
         assert_eq!(name("speed"), Some("Target speed"));
+        assert_eq!(name("f"), Some("Focus tests per letter"));
+        assert_eq!(name("focus"), Some("Focus tests per letter"));
         assert_eq!(name("q"), Some("Quit"));
         assert_eq!(name("inst"), Some("Instant death"));
         assert_eq!(name("death"), Some("Instant death"));

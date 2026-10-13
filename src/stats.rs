@@ -27,23 +27,25 @@ const STAY_SPEED: f64 = 0.8;
 /// running accuracy, so one slip doesn't unlearn it; a couple close together do.
 const STAY_ACCURACY_DROP: f64 = 0.1;
 
-/// What a letter needs to count as learned (both set in settings).
+/// What a letter needs to count as learned (all set in settings).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Targets {
     pub wpm: f64,
     /// 0..1
     pub accuracy: f64,
+    /// Progressive tests a letter has to be the focus of before it can count as learned.
+    pub focus_tests: u32,
 }
 
 impl Targets {
     /// What a letter has to reach to become learned.
     pub fn to_learn(self) -> Targets {
-        Targets { wpm: self.wpm * LEARN_SPEED, accuracy: 1.0 - (1.0 - self.accuracy) * LEARN_MISSES }
+        Targets { wpm: self.wpm * LEARN_SPEED, accuracy: 1.0 - (1.0 - self.accuracy) * LEARN_MISSES, ..self }
     }
 
     /// What a learned letter has to stay at to remain learned.
     pub fn to_stay(self) -> Targets {
-        Targets { wpm: self.wpm * STAY_SPEED, accuracy: self.accuracy - STAY_ACCURACY_DROP }
+        Targets { wpm: self.wpm * STAY_SPEED, accuracy: self.accuracy - STAY_ACCURACY_DROP, ..self }
     }
 }
 /// Pauses longer than this aren't counted as typing speed.
@@ -137,6 +139,9 @@ pub struct LetterStats {
     /// (`Targets::to_learn`, `Targets::to_stay`) so it doesn't flip back and forth.
     #[serde(default)]
     pub learned: bool,
+    /// Progressive tests finished with this letter as the focus.
+    #[serde(default)]
+    pub focus_tests: u32,
 }
 
 impl LetterStats {
@@ -157,13 +162,13 @@ impl LetterStats {
         self.wpm().is_some_and(|w| w >= t.wpm) && self.accuracy.is_some_and(|a| a >= t.accuracy)
     }
 
-    /// Learning a letter takes enough practice and beating the targets; losing it takes
-    /// falling well under them.
+    /// Learning a letter takes enough practice, enough tests focused on it, and beating the
+    /// targets; losing it takes falling well under them.
     fn update_learned(&mut self, t: Targets, practice: u32) {
         self.learned = if self.learned {
             self.reaches(t.to_stay())
         } else {
-            self.samples >= practice && self.reaches(t.to_learn())
+            self.samples >= practice && self.focus_tests >= t.focus_tests && self.reaches(t.to_learn())
         };
     }
 
@@ -226,6 +231,11 @@ impl Stats {
 
     pub fn letter(&self, c: char) -> LetterStats {
         self.letters.get(&c).cloned().unwrap_or_default()
+    }
+
+    /// A progressive test focused on `c` was finished.
+    pub fn count_focus_test(&mut self, c: char) {
+        self.letters.entry(c).or_default().focus_tests += 1;
     }
 
     /// Make sure progressive mode has its starting letters.
@@ -329,7 +339,7 @@ mod tests {
         let mut s = Stats::default();
         s.sync_layout(&layout);
         s.ensure_started(&p);
-        let t = Targets { wpm: 30.0, accuracy: 0.95 };
+        let t = Targets { wpm: 30.0, accuracy: 0.95, focus_tests: 0 };
         assert_eq!(s.maybe_unlock(&p), None);
         let fast = Keystroke { expected: 'x', correct: true, interval: Some(Duration::from_millis(200)), at: Duration::ZERO };
         let practice = |c: char, n: u32| vec![Keystroke { expected: c, ..fast.clone() }; n as usize];
@@ -358,9 +368,10 @@ mod tests {
 
     #[test]
     fn learning_has_slack_both_ways() {
-        let t = Targets { wpm: 30.0, accuracy: 0.95 };
+        let t = Targets { wpm: 30.0, accuracy: 0.95, focus_tests: 0 };
         let after = |wpm: f64, accuracy: f64, learned: bool| {
-            let mut s = LetterStats { samples: 50, avg_ms: Some(12_000.0 / wpm), accuracy: Some(accuracy), key: None, learned };
+            let mut s =
+                LetterStats { samples: 50, avg_ms: Some(12_000.0 / wpm), accuracy: Some(accuracy), learned, ..Default::default() };
             s.update_learned(t, MIN_SAMPLES);
             s.learned
         };
@@ -376,7 +387,7 @@ mod tests {
     fn one_slip_doesnt_unlearn_a_letter() {
         let layout = gallium();
         let p = Progression::for_layout(&layout);
-        let t = Targets { wpm: 30.0, accuracy: 0.95 };
+        let t = Targets { wpm: 30.0, accuracy: 0.95, focus_tests: 0 };
         let mut s = Stats::default();
         s.sync_layout(&layout);
         let hit = Keystroke { expected: 'e', correct: true, interval: Some(Duration::from_millis(250)), at: Duration::ZERO };
@@ -392,6 +403,26 @@ mod tests {
         s.record(&[hit, miss], &layout);
         s.update_learned(&p, t);
         assert!(!s.letter('e').learned);
+    }
+
+    #[test]
+    fn learning_takes_focus_tests() {
+        let layout = gallium();
+        let p = Progression::for_layout(&layout);
+        let t = Targets { wpm: 30.0, accuracy: 0.95, focus_tests: 2 };
+        let mut s = Stats::default();
+        s.sync_layout(&layout);
+        let fast = Keystroke { expected: 'e', correct: true, interval: Some(Duration::from_millis(200)), at: Duration::ZERO };
+        s.record(&vec![fast; 30], &layout);
+        s.update_learned(&p, t);
+        assert!(!s.letter('e').learned, "fast and accurate, but never the focus");
+        s.count_focus_test('e');
+        s.update_learned(&p, t);
+        assert!(!s.letter('e').learned);
+        s.count_focus_test('e');
+        s.update_learned(&p, t);
+        assert!(s.letter('e').learned);
+        assert_eq!(s.letter('e').focus_tests, 2);
     }
 
     #[test]

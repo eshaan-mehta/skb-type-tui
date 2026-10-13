@@ -816,7 +816,7 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
                 ("Hints", _) => if s.hints { "on" } else { "off" }.to_string(),
                 ("Cursor", _) => s.cursor.name().to_string(),
                 ("Instant death", _) => if s.instant_death { "on" } else { "off" }.to_string(),
-                ("Words" | "Target speed" | "Target accuracy", _) => format!("{}{unit}", app.number_value(name)),
+                _ if number_field(name).is_some() => format!("{}{unit}", app.number_value(name)),
                 _ => String::new(),
             };
             let marker = if selected { "› " } else { "  " };
