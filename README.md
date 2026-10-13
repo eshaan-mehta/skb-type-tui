@@ -191,7 +191,7 @@ layer changes either, so the overlay flashes keys based on what you type and sta
 | Results | `tab` / `enter` next test · `r` retry the same text (after an instant death, the only way on) · `←→` pick the focus letter for the next test (progressive mode) · `↑↓` / `j k` switch between the wpm and accuracy graphs · `e` expand the graph · `esc` settings · `q` quit |
 | Expanded graph | `←→` / `h l` step through the test (`home` / `end` jump to the ends) · `↑↓` / `j k` wpm or accuracy · `e` / `esc` shrink |
 | Settings | `↑↓` / `j k` move · type a setting's name to jump to it · `enter` change · `←→` adjust · `esc` close |
-| Keyboard picker | `↑↓` / `j k` choose · `enter` confirm · `esc` skip for now (or cancel, from the settings) |
+| Keyboard picker | `↑↓` / `j k` choose · `enter` confirm · `esc` skip for now (or back to the settings, when opened from there) |
 | Layout editor | arrows, or press a key on the board, to select · `enter` change the key · `del` undo your change · `tab` next layer · `ctrl+s` save · `esc` cancel |
 
 In the layout editor, each of a key's four actions (tap, hold, double tap, tap-then-hold; `tab` switches

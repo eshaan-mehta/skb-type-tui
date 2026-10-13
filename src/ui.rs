@@ -43,7 +43,11 @@ pub fn draw(f: &mut Frame, app: &App) {
             draw_settings(f, app, menu);
         }
         Screen::Editor(ed) => draw_editor(f, app, ed),
-        Screen::Board(picker) => draw_board_picker(f, app, picker),
+        Screen::Board(picker) if picker.onboarding => draw_board_picker(f, app, picker),
+        Screen::Board(picker) => {
+            draw_typing(f, app, "↑↓/jk choose · enter confirm · esc back");
+            draw_board_popup(f, app, picker);
+        }
     }
 }
 
@@ -434,9 +438,9 @@ fn draw_typing(f: &mut Frame, app: &App, actions: &str) {
         }
     }
 
-    // With the settings menu open over it, everything above the keys fades back so the menu
-    // stands out. (The keys at the bottom are the menu's, so they stay as they are.)
-    if matches!(app.screen, Screen::Settings(_)) {
+    // With a popup open over it (settings, the keyboard picker), everything above the keys fades
+    // back so the popup stands out. (The keys at the bottom are the popup's, so they stay.)
+    if !matches!(app.screen, Screen::Typing) {
         f.buffer_mut().set_style(Rect { height: foot.y - area.y, ..area }, faded());
     }
     draw_bottom(f, app, foot, &[actions]);
@@ -852,21 +856,33 @@ fn fmt_secs(v: f64) -> String {
     format!("{}s", fmt_num(v))
 }
 
-fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
-    let s = &app.store.saved.settings;
-    let w = 70;
-    let h = SETTINGS_ITEMS.len() as u16 + 5;
-    let area = f.area();
-    let popup = Rect {
+/// Popups are this wide.
+const POPUP_W: u16 = 70;
+
+/// Where a popup `w` by `h` goes in `area`: the middle.
+fn popup_rect(area: Rect, w: u16, h: u16) -> Rect {
+    Rect {
         x: area.x + area.width.saturating_sub(w) / 2,
         y: area.y + area.height.saturating_sub(h) / 2,
         width: w.min(area.width),
         height: h.min(area.height),
-    };
+    }
+}
+
+/// A popup in the middle of the screen, `w` by `h`, cleared and framed with `title`; returns the
+/// space inside its border. (What's behind it is faded by `draw_typing`.)
+fn popup(f: &mut Frame, w: u16, h: u16, title: &str) -> Rect {
+    let popup = popup_rect(f.area(), w, h);
     f.render_widget(Clear, popup);
-    let block = Block::bordered().border_type(BorderType::Rounded).border_style(dim()).title(" settings ");
+    let block = Block::bordered().border_type(BorderType::Rounded).border_style(dim()).title(format!(" {title} "));
     let inner = block.inner(popup);
     f.render_widget(block, popup);
+    inner
+}
+
+fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
+    let s = &app.store.saved.settings;
+    let inner = popup(f, POPUP_W, SETTINGS_ITEMS.len() as u16 + 5, "settings");
     let accent = Style::new().fg(theme::ACCENT);
 
     let mut lines: Vec<Line> = SETTINGS_ITEMS
@@ -951,8 +967,63 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
     f.render_widget(Paragraph::new(lines), inner.inner(ratatui::layout::Margin { horizontal: 1, vertical: 0 }));
 }
 
-/// Which keyboard is this? Lists the boards, marks the one plugged in, and says when a choice
-/// isn't supported yet.
+/// The keyboards to pick from, the one plugged in tagged "detected", with names `name_w` wide.
+fn board_options(app: &App, picker: &BoardPicker, name_w: usize) -> Vec<Line<'static>> {
+    // What's plugged in, as far as we can tell.
+    let detected = match &app.device {
+        DeviceState::Connected { .. } => Some(Keyboard::Voyager),
+        DeviceState::WrongBoard(_) => Some(Keyboard::Other),
+        _ => None,
+    };
+    Keyboard::ALL
+        .iter()
+        .enumerate()
+        .map(|(i, k)| {
+            let selected = i == picker.selected;
+            let style = match (selected, k.supported()) {
+                (true, _) => Style::new().fg(theme::ACCENT),
+                (false, true) => Style::new(),
+                (false, false) => dim(),
+            };
+            let marker = if selected { "› " } else { "  " };
+            let tag = if detected == Some(*k) { "detected" } else { "" };
+            Line::from(vec![
+                Span::styled(format!("{marker}{:<name_w$}", k.name()), style),
+                Span::styled(tag, Style::new().fg(theme::CORRECT)),
+            ])
+        })
+        .collect()
+}
+
+/// What keyboard is plugged in, as far as we can tell.
+fn found_line(app: &App) -> Line<'static> {
+    match &app.device {
+        DeviceState::Searching => Line::styled("looking for your keyboard…", dim()),
+        DeviceState::Connected { .. } => Line::styled("found a ZSA Voyager plugged in", Style::new().fg(theme::CORRECT)),
+        DeviceState::WrongBoard(name) => {
+            Line::styled(format!("found a {name}, which isn't supported yet"), Style::new().fg(theme::WARNING))
+        }
+        DeviceState::Missing => Line::styled("no supported keyboard plugged in", dim()),
+    }
+}
+
+/// Why the last pick didn't go through, if it didn't.
+fn picker_message(picker: &BoardPicker) -> Line<'static> {
+    picker.message.clone().map_or_else(Line::default, |m| Line::styled(m, Style::new().fg(theme::WARNING)))
+}
+
+/// The keyboard picker as a popup, opened from settings.
+fn draw_board_popup(f: &mut Frame, app: &App, picker: &BoardPicker) {
+    let inner = popup(f, POPUP_W, Keyboard::ALL.len() as u16 + 5, "board");
+    // Tags line up at the popup's right edge, like the settings' values.
+    let name_w = inner.width.saturating_sub(2 + 2 + "detected".len() as u16) as usize;
+    let mut lines = board_options(app, picker, name_w);
+    lines.extend([Line::default(), found_line(app), picker_message(picker)]);
+    f.render_widget(Paragraph::new(lines), inner.inner(ratatui::layout::Margin { horizontal: 1, vertical: 0 }));
+}
+
+/// Which keyboard is this? At first launch, a screen of its own: lists the boards, marks the
+/// one plugged in, and says when a choice isn't supported yet.
 fn draw_board_picker(f: &mut Frame, app: &App, picker: &BoardPicker) {
     let area = f.area();
     let [_, title, sub, _, options, _, found, message, _, foot, _] = Split::vertical([
@@ -973,47 +1044,10 @@ fn draw_board_picker(f: &mut Frame, app: &App, picker: &BoardPicker) {
     f.render_widget(center(Line::styled("Which keyboard are you using?", Style::new().bold())), title);
     f.render_widget(center(Line::styled("it's drawn on screen, with your own layout, as you type", dim())), sub);
 
-    // What's plugged in, as far as we can tell.
-    let detected = match &app.device {
-        DeviceState::Connected { .. } => Some(Keyboard::Voyager),
-        DeviceState::WrongBoard(_) => Some(Keyboard::Other),
-        _ => None,
-    };
-    let lines: Vec<Line> = Keyboard::ALL
-        .iter()
-        .enumerate()
-        .map(|(i, k)| {
-            let selected = i == picker.selected;
-            let style = match (selected, k.supported()) {
-                (true, _) => Style::new().fg(theme::ACCENT),
-                (false, true) => Style::new(),
-                (false, false) => dim(),
-            };
-            let marker = if selected { "› " } else { "  " };
-            let tag = if detected == Some(*k) { "detected" } else { "" };
-            Line::from(vec![
-                Span::styled(format!("{marker}{:<32}", k.name()), style),
-                Span::styled(tag, Style::new().fg(theme::CORRECT)),
-            ])
-        })
-        .collect();
-    f.render_widget(Paragraph::new(lines), centered(options, 42));
-
-    let found_line = match &app.device {
-        DeviceState::Searching => Line::styled("looking for your keyboard…", dim()),
-        DeviceState::Connected { .. } => Line::styled("found a ZSA Voyager plugged in", Style::new().fg(theme::CORRECT)),
-        DeviceState::WrongBoard(name) => {
-            Line::styled(format!("found a {name}, which isn't supported yet"), Style::new().fg(theme::WARNING))
-        }
-        DeviceState::Missing => Line::styled("no supported keyboard plugged in", dim()),
-    };
-    f.render_widget(center(found_line), found);
-    if let Some(m) = &picker.message {
-        f.render_widget(center(Line::styled(m.clone(), Style::new().fg(theme::WARNING))), message);
-    }
-
-    let esc = if picker.onboarding { "esc skip for now" } else { "esc cancel" };
-    draw_bottom(f, app, foot, &[&format!("↑↓/jk choose · enter confirm · {esc}")]);
+    f.render_widget(Paragraph::new(board_options(app, picker, 32)), centered(options, 42));
+    f.render_widget(center(found_line(app)), found);
+    f.render_widget(center(picker_message(picker)), message);
+    draw_bottom(f, app, foot, &["↑↓/jk choose · enter confirm · esc skip for now"]);
 }
 
 fn draw_editor(f: &mut Frame, app: &App, ed: &Editor) {

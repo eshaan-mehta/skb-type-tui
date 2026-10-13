@@ -235,11 +235,11 @@ impl ResultsView {
     }
 }
 
-/// Picking the keyboard: at first launch, and from settings.
+/// Picking the keyboard: at first launch (a screen of its own), and from settings (a popup).
 pub struct BoardPicker {
     /// Index into `Keyboard::ALL`.
     pub selected: usize,
-    /// First launch, where esc skips setting a keyboard up (rather than cancelling a change).
+    /// First launch, where esc skips setting a keyboard up (rather than going back to settings).
     pub onboarding: bool,
     /// Why the last pick didn't go through.
     pub message: Option<String>,
@@ -796,12 +796,16 @@ impl App {
                 picker.message = None;
             }
             KeyCode::Enter => match Keyboard::ALL[picker.selected] {
-                board if board.supported() => self.pick_board(board),
-                _ => picker.message = Some("Other keyboards aren't supported yet. QMK and ZMK boards are coming.".into()),
+                board if board.supported() => {
+                    let onboarding = picker.onboarding;
+                    self.close_board_picker(onboarding);
+                    self.pick_board(board);
+                }
+                _ => picker.message = Some("Other keyboards aren't supported yet. QMK and ZMK are coming.".into()),
             },
             KeyCode::Esc => {
                 let onboarding = picker.onboarding;
-                self.screen = Screen::Typing;
+                self.close_board_picker(onboarding);
                 if onboarding {
                     self.set_notice("No keyboard set up, so it's a plain typing test. Pick one from settings (esc) any time.");
                 }
@@ -810,9 +814,19 @@ impl App {
         }
     }
 
+    /// Leave the keyboard picker: for the typing screen at first launch, otherwise back to the
+    /// settings it was opened from.
+    fn close_board_picker(&mut self, onboarding: bool) {
+        self.screen = if onboarding {
+            Screen::Typing
+        } else {
+            let selected = SETTINGS_ITEMS.iter().position(|s| *s == "Board").unwrap_or(0);
+            Screen::Settings(SettingsMenu { selected, ..Default::default() })
+        };
+    }
+
     /// Use `board` from now on, and load its layout.
     fn pick_board(&mut self, board: Keyboard) {
-        self.screen = Screen::Typing;
         if self.store.saved.keyboard == Some(board) {
             return;
         }
