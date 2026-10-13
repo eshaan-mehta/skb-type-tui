@@ -501,8 +501,9 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
     let summary_h = lines.len() as u16;
 
     // Status, summary, actions, graph header, graph, its keys (with gaps); the board only if
-    // it still fits.
-    let fixed = 1 + summary_h + 1 + 1 + 1 + 1 + CHART_H + BOTTOM_H + 1;
+    // it still fits. A test too short to graph gets just the header, saying so.
+    let chart_h = if view.has_graph() { CHART_H } else { 0 };
+    let fixed = 1 + summary_h + 1 + 1 + 1 + 1 + chart_h + BOTTOM_H + 1;
     let show_board = app.device.is_connected() && app.layout.is_some();
     let scale = if show_board { Scale::fit(area.width, area.height.saturating_sub(fixed + 2)) } else { None };
 
@@ -516,7 +517,7 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
-        Constraint::Length(CHART_H),
+        Constraint::Length(chart_h),
         Constraint::Length(BOTTOM_H),
         Constraint::Length(1),
         Constraint::Length(scale.map_or(0, |s| s.height())),
@@ -526,7 +527,10 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
 
     f.render_widget(Paragraph::new(status_line(app)).alignment(Alignment::Center), status);
     f.render_widget(Paragraph::new(lines).alignment(Alignment::Center), summary);
-    let keys = if app.can_switch_focus() {
+    // A failed test can only be retried.
+    let keys = if t.is_failed() {
+        "r retry · esc settings · q quit"
+    } else if app.can_switch_focus() {
         "tab next test · r retry · ←→ focus letter · esc settings · q quit"
     } else {
         "tab next test · r retry · esc settings · q quit"
@@ -549,14 +553,15 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
         f.render_widget(Board { keys: &keys, scale }, board);
     }
 
-    draw_bottom(f, app, foot, &["↑↓/jk wpm/accuracy · e expand"]);
+    let graph_keys: &[&str] = if view.has_graph() { &["↑↓/jk wpm/accuracy · e expand"] } else { &[""] };
+    draw_bottom(f, app, foot, graph_keys);
 }
 
 /// The results graph: running wpm and per-second raw (or running accuracy), red dots where
 /// mistakes happened, and, when expanded, a cursor with the values at that second.
 fn draw_chart(f: &mut Frame, view: &ResultsView, head: Rect, area: Rect) {
     let tl = &view.timeline;
-    if tl.len() < 2 {
+    if !view.has_graph() {
         f.render_widget(Paragraph::new(Line::styled("too short to graph", dim())).alignment(Alignment::Center), head);
         return;
     }

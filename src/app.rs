@@ -226,6 +226,11 @@ impl ResultsView {
         let cursor = timeline.len().saturating_sub(1);
         ResultsView { chart: ChartView::Wpm, cursor, timeline, expanded: false }
     }
+
+    /// Whether the test lasted long enough to graph.
+    pub fn has_graph(&self) -> bool {
+        self.timeline.len() >= 2
+    }
 }
 
 pub enum Screen {
@@ -710,9 +715,13 @@ impl App {
     }
 
     fn on_results_key(&mut self, key: KeyEvent) {
-        let can_switch_focus = self.can_switch_focus();
+        // A failed test can only be retried, so there's no next test to pick a focus letter for.
+        let failed = self.test.is_failed();
+        let can_switch_focus = self.can_switch_focus() && !failed;
         let Screen::Results(view) = &mut self.screen else { return };
         let last = view.timeline.len().saturating_sub(1);
+        // The graph's keys only do something when there's a graph.
+        let graph = view.has_graph();
         match key.code {
             // Expanded graph: move the cursor through the test to read its numbers.
             KeyCode::Left | KeyCode::Char('h') if view.expanded => view.cursor = view.cursor.saturating_sub(1),
@@ -722,14 +731,14 @@ impl App {
             // Otherwise: pick the focus letter for the next test.
             KeyCode::Left | KeyCode::Right if can_switch_focus => self.switch_focus(key.code == KeyCode::Right),
             // Switch the graph between wpm and accuracy.
-            KeyCode::Up | KeyCode::Down | KeyCode::Char('k') | KeyCode::Char('j') | KeyCode::Char('v') => {
+            KeyCode::Up | KeyCode::Down | KeyCode::Char('k') | KeyCode::Char('j') | KeyCode::Char('v') if graph => {
                 view.chart = match view.chart {
                     ChartView::Wpm => ChartView::Accuracy,
                     ChartView::Accuracy => ChartView::Wpm,
                 };
             }
-            KeyCode::Char('e') => view.expanded = !view.expanded,
-            KeyCode::Tab | KeyCode::Enter => self.new_test(),
+            KeyCode::Char('e') if graph => view.expanded = !view.expanded,
+            KeyCode::Tab | KeyCode::Enter if !failed => self.new_test(),
             KeyCode::Char('r') => {
                 self.test = self.test.restart();
                 self.screen = Screen::Typing;
