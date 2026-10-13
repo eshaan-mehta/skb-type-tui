@@ -1,4 +1,4 @@
-# zsa-typer-tui
+# skb-type-tui
 
 A minimal, [monkeytype](https://monkeytype.com)-style typing test that runs in your terminal, made for the
 [ZSA Voyager](https://www.zsa.io/voyager). Use it to get faster, or just to practice.
@@ -131,7 +131,7 @@ No Voyager plugged in? It still works as a typing test, just without the board o
 ## Install
 
 ```sh
-cargo install zsa-typer-tui
+cargo install skb-type-tui
 ```
 
 You'll need Rust, which you can get from [rustup.rs](https://rustup.rs). On Linux, building also needs the
@@ -142,8 +142,8 @@ distribution's equivalent), and reading the board needs ZSA's udev rules (see th
 To build from source instead:
 
 ```sh
-git clone https://github.com/eshaan-mehta/zsa-typer-tui
-cd zsa-typer-tui
+git clone https://github.com/eshaan-mehta/skb-type-tui
+cd skb-type-tui
 cargo install --path .
 ```
 
@@ -152,7 +152,7 @@ cargo install --path .
 Plug in your Voyager and run:
 
 ```sh
-zsa-typer-tui
+skb-type-tui
 ```
 
 The first time, it fetches your layout from Oryx and shows it to you. Check the keys (`tab` flips through the
@@ -229,14 +229,14 @@ border says how to press it (`hold`, `2×`, `t+hld`).
   from Peter Norvig's [Mayzner Revisited](https://norvig.com/mayzner.html) counts.
 
 Settings, cached layouts and stats are kept in your config directory:
-`~/Library/Application Support/zsa-typer-tui` on macOS, `~/.config/zsa-typer-tui` on Linux.
+`~/Library/Application Support/skb-type-tui` on macOS, `~/.config/skb-type-tui` on Linux.
 
 ## Troubleshooting
 
 - **"Your voyager is missing":** check the cable. On Linux, make sure ZSA's udev rules are installed.
 - **The keys on screen are wrong:** in the settings, *Refetch layout from board* fetches it again, and *Edit
   layout* fixes individual keys.
-- **To see what the board is sending,** run `zsa-typer-tui --hid-debug`. It prints raw events: the connection,
+- **To see what the board is sending,** run `skb-type-tui --hid-debug`. It prints raw events: the connection,
   key presses with their matrix positions, and layer changes.
 
 ## Development

@@ -135,9 +135,25 @@ pub struct Store {
     pub saved: Saved,
 }
 
+/// The app's folder in the config directory.
+const DIR_NAME: &str = "skb-type-tui";
+/// What it was called before, when the app was zsa-typer-tui.
+const OLD_DIR_NAME: &str = "zsa-typer-tui";
+
+/// The app's folder in `config`, after moving the old one over if that's all there is, so
+/// settings, layouts and stats carry over from before the rename.
+fn app_dir(config: &Path) -> PathBuf {
+    let dir = config.join(DIR_NAME);
+    let old = config.join(OLD_DIR_NAME);
+    if !dir.exists() && old.is_dir() {
+        let _ = fs::rename(&old, &dir);
+    }
+    dir
+}
+
 impl Store {
     pub fn open() -> Self {
-        let dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join("zsa-typer-tui");
+        let dir = app_dir(&dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")));
         let saved = read_json(&dir.join("state.json")).unwrap_or_default();
         Store { dir, saved }
     }
@@ -187,4 +203,25 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     fs::write(&tmp, serde_json::to_string_pretty(value)?)?;
     fs::rename(&tmp, path).with_context(|| format!("couldn't write {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn data_moves_over_from_the_old_name() {
+        let config = std::env::temp_dir().join(format!("skb-type-config-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&config);
+        fs::create_dir_all(config.join(OLD_DIR_NAME)).unwrap();
+        fs::write(config.join(OLD_DIR_NAME).join("stats.json"), "{}").unwrap();
+        let dir = app_dir(&config);
+        assert_eq!(dir, config.join(DIR_NAME));
+        assert!(dir.join("stats.json").exists() && !config.join(OLD_DIR_NAME).exists());
+        // Once there's a new folder, an old one is left alone.
+        fs::create_dir_all(config.join(OLD_DIR_NAME)).unwrap();
+        app_dir(&config);
+        assert!(config.join(OLD_DIR_NAME).exists() && dir.join("stats.json").exists());
+        fs::remove_dir_all(&config).unwrap();
+    }
 }

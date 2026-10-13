@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn loads_word_files() {
-        let dir = std::env::temp_dir().join(format!("zsa-typer-words-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("skb-type-words-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("words.txt");
         std::fs::write(&file, "alpha\nbeta  gamma\n\nalpha\nDelta!\n").unwrap();

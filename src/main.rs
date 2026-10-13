@@ -15,9 +15,9 @@ mod ui;
 mod words;
 
 const USAGE: &str = "\
-zsa-typer-tui: a typing trainer for the ZSA Voyager
+skb-type-tui: a typing trainer for the ZSA Voyager
 
-usage: zsa-typer-tui [--hid-debug | --help]
+usage: skb-type-tui [--hid-debug | --help]
 
   --hid-debug   print raw events from the board (key presses, layer changes) and exit on Ctrl+C
 ";

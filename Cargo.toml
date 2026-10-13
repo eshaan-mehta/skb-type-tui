@@ -1,10 +1,10 @@
 [package]
-name = "zsa-typer-tui"
+name = "skb-type-tui"
 version = "0.1.0"
 edition = "2024"
 description = "A minimalistic TUI typing test for the ZSA Voyager"
 license = "MIT"
-repository = "https://github.com/eshaan-mehta/zsa-typer-tui"
+repository = "https://github.com/eshaan-mehta/skb-type-tui"
 keywords = ["typing", "keyboard", "zsa", "voyager", "tui"]
 categories = ["command-line-utilities", "hardware-support"]
 
