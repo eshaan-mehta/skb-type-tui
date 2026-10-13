@@ -216,7 +216,7 @@ border says how to press it (`hold`, `2×`, `t+hld`).
 | Board | the keyboard you're using (for now only the ZSA Voyager is supported) |
 | Edit layout | fix keys by hand |
 | Refetch layout from board | fetch your flashed layout from Oryx again |
-| Reset progress | clear your letter stats, progressive unlocks and n-grams progress |
+| Reset progress | clear your letter stats, progressive unlocks and n-grams progress (it asks first, since this can't be undone) |
 
 ## How it works
 

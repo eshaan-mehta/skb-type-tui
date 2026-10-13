@@ -113,6 +113,9 @@ fn typing_actions(app: &App) -> &'static str {
 
 /// What can be pressed in the settings menu right now.
 fn settings_actions(menu: &SettingsMenu) -> &'static str {
+    if menu.confirm_reset {
+        return "y reset everything · n/esc cancel";
+    }
     match &menu.editing {
         Some(entry) if entry.is_path => "enter load · esc cancel",
         Some(_) => "enter save · esc cancel",
@@ -925,7 +928,8 @@ fn cursor_example() -> Line<'static> {
 fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
     let s = &app.store.saved.settings;
     // The list, a gap, what the selected setting is, and what's being typed or searched.
-    let inner = popup(f, POPUP_W, SETTINGS_ITEMS.len() as u16 + 3 + ABOUT_H + 1, "settings");
+    let h = SETTINGS_ITEMS.len() as u16 + 3 + ABOUT_H + 1;
+    let inner = popup(f, POPUP_W, h, "settings");
     let [list, _, about, status_area] = Split::vertical([
         Constraint::Length(SETTINGS_ITEMS.len() as u16),
         Constraint::Length(1),
@@ -1020,6 +1024,28 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
         }
     }
     f.render_widget(Paragraph::new(status), status_area);
+
+    // Asking before a reset: the menu fades back too, under the question.
+    if menu.confirm_reset {
+        let menu_area = popup_rect(f.area(), POPUP_W, h);
+        f.buffer_mut().set_style(menu_area, faded());
+        draw_reset_confirm(f);
+    }
+}
+
+/// Confirming a progress reset is this wide.
+const CONFIRM_W: u16 = 56;
+
+/// Are you sure? What a reset clears, and that it's for good.
+fn draw_reset_confirm(f: &mut Frame) {
+    let lines = vec![
+        Line::raw("Clear your letter stats, progressive unlocks and n-grams progress?"),
+        Line::default(),
+        Line::styled("This can't be undone.", Style::new().fg(theme::MISTAKE).bold()),
+    ];
+    let inner = popup(f, CONFIRM_W, 6, "reset progress");
+    let text = inner.inner(ratatui::layout::Margin { horizontal: 1, vertical: 0 });
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), text);
 }
 
 /// The keyboards to pick from, the one plugged in tagged "detected", with names `name_w` wide.

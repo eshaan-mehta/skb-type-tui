@@ -106,6 +106,8 @@ pub struct SettingsMenu {
     last_typed: Option<Instant>,
     /// A value being typed into the selected setting.
     pub editing: Option<Entry>,
+    /// Asking whether to really reset progress (it can't be undone).
+    pub confirm_reset: bool,
 }
 
 /// Text being typed into a setting: a number, or the word list's file path.
@@ -854,6 +856,19 @@ impl App {
             return;
         }
 
+        // Resetting needs a y, not enter: enter is what asked, so a double press doesn't reset.
+        if menu.confirm_reset {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    menu.confirm_reset = false;
+                    self.reset_progress();
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => menu.confirm_reset = false,
+                _ => {}
+            }
+            return;
+        }
+
         if let Some(entry) = &mut menu.editing {
             match key.code {
                 KeyCode::Esc => menu.editing = None,
@@ -1044,10 +1059,9 @@ impl App {
                 self.set_notice("Pick your keyboard first, under Board.")
             }
             "Reset progress" => {
-                self.stats = Stats::default();
-                self.on_layout_changed();
-                self.test = self.make_test();
-                self.set_notice("Progress reset.");
+                if let Screen::Settings(menu) = &mut self.screen {
+                    menu.confirm_reset = true;
+                }
             }
             "Edit layout" => {
                 let base = self
@@ -1075,6 +1089,14 @@ impl App {
             "Quit" => self.should_quit = true,
             _ => {}
         }
+    }
+
+    /// Clear letter stats, progressive unlocks and n-grams progress, for good.
+    fn reset_progress(&mut self) {
+        self.stats = Stats::default();
+        self.on_layout_changed();
+        self.test = self.make_test();
+        self.set_notice("Progress reset.");
     }
 
     fn persist(&mut self) {
