@@ -571,8 +571,9 @@ impl App {
         match (self.store.saved.settings.mode, &self.layout, &self.progression) {
             (Mode::Progressive, Some(_), Some(p)) => {
                 self.stats.ensure_started(p);
+                self.stats.ensure_focus(target);
                 let allowed: BTreeSet<char> = self.stats.unlocked.iter().copied().collect();
-                let focus = self.stats.focus(target);
+                let focus = self.stats.focus();
                 self.test_focus = focus;
                 let stats = &self.stats;
                 let weight = |c: char| {
@@ -620,7 +621,20 @@ impl App {
             if mode == Mode::Progressive && completed {
                 self.just_unlocked = self.stats.maybe_unlock(p);
             }
+            self.stats.ensure_focus(t);
         }
+        self.save_stats();
+    }
+
+    /// Whether ←→ switch the focus letter: progressive mode, with a layout.
+    pub fn can_switch_focus(&self) -> bool {
+        self.store.saved.settings.mode == Mode::Progressive && self.progression.is_some()
+    }
+
+    /// Focus on the next (or previous) unlocked letter, for the next test.
+    fn switch_focus(&mut self, forward: bool) {
+        let Some(current) = self.stats.focus() else { return };
+        self.stats.set_focus(cycle(&self.stats.unlocked, current, forward));
         self.save_stats();
     }
 
@@ -638,8 +652,10 @@ impl App {
         };
         self.stats.sync_layout(layout);
         let p = Progression::for_layout(layout);
+        let t = self.store.saved.settings.targets();
         self.stats.ensure_started(&p);
-        self.stats.update_learned(&p, self.store.saved.settings.targets());
+        self.stats.update_learned(&p, t);
+        self.stats.ensure_focus(t);
         self.progression = Some(p);
         self.save_stats();
     }
@@ -650,6 +666,10 @@ impl App {
         match key.code {
             KeyCode::Esc => self.screen = Screen::Settings(SettingsMenu::default()),
             KeyCode::Tab => self.new_test(),
+            KeyCode::Left | KeyCode::Right if self.can_switch_focus() => {
+                self.switch_focus(key.code == KeyCode::Right);
+                self.new_test();
+            }
             KeyCode::Backspace if ctrl || alt => self.test.delete_word(),
             KeyCode::Char('w') | KeyCode::Char('h') if ctrl => self.test.delete_word(),
             KeyCode::Backspace => self.test.backspace(),
@@ -690,6 +710,7 @@ impl App {
     }
 
     fn on_results_key(&mut self, key: KeyEvent) {
+        let can_switch_focus = self.can_switch_focus();
         let Screen::Results(view) = &mut self.screen else { return };
         let last = view.timeline.len().saturating_sub(1);
         match key.code {
@@ -698,6 +719,8 @@ impl App {
             KeyCode::Right | KeyCode::Char('l') if view.expanded => view.cursor = (view.cursor + 1).min(last),
             KeyCode::Home if view.expanded => view.cursor = 0,
             KeyCode::End if view.expanded => view.cursor = last,
+            // Otherwise: pick the focus letter for the next test.
+            KeyCode::Left | KeyCode::Right if can_switch_focus => self.switch_focus(key.code == KeyCode::Right),
             // Switch the graph between wpm and accuracy.
             KeyCode::Up | KeyCode::Down | KeyCode::Char('k') | KeyCode::Char('j') | KeyCode::Char('v') => {
                 view.chart = match view.chart {

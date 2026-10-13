@@ -165,11 +165,19 @@ impl LetterStats {
     /// Learning a letter takes enough practice, enough tests focused on it, and beating the
     /// targets; losing it takes falling well under them.
     fn update_learned(&mut self, t: Targets, practice: u32) {
-        self.learned = if self.learned {
-            self.reaches(t.to_stay())
-        } else {
-            self.samples >= practice && self.focus_tests >= t.focus_tests && self.reaches(t.to_learn())
-        };
+        if !self.learned {
+            self.learned = self.samples >= practice && self.focus_tests >= t.focus_tests && self.reaches(t.to_learn());
+        } else if !self.reaches(t.to_stay()) {
+            self.learned = false;
+            // Relearning it takes half the focus tests (5 more of 10).
+            self.focus_tests = t.focus_tests / 2;
+        }
+    }
+
+    /// Focus tests still to go before it can be learned; at least one while it isn't learned
+    /// (the targets need beating in a test too).
+    pub fn focus_tests_left(&self, t: Targets) -> u32 {
+        if self.learned { 0 } else { t.focus_tests.saturating_sub(self.focus_tests).max(1) }
     }
 
     /// 0 (needs work) to 1 (at target), counting low sample counts as unproven.
@@ -193,6 +201,9 @@ pub struct Stats {
     pub unlocked: Vec<char>,
     /// How many sets of the n-grams course have been passed.
     pub ngram_sets: usize,
+    /// The letter progressive tests focus on. It stays until it's learned or the user picks
+    /// another, so slipping on some other letter doesn't pull the focus away.
+    focus: Option<char>,
 }
 
 impl Stats {
@@ -245,10 +256,15 @@ impl Stats {
         }
     }
 
-    /// After a test: work out which letters count as learned now.
+    /// After a test: work out which letters count as learned now. A focus letter that's just
+    /// been learned stops being the focus (`ensure_focus` picks the next).
     pub fn update_learned(&mut self, p: &Progression, t: Targets) {
+        let focus_was_learned = self.focus().map(|c| self.letter(c).learned);
         for (c, s) in self.letters.iter_mut() {
             s.update_learned(t, p.practice_needed(*c));
+        }
+        if focus_was_learned == Some(false) && self.focus().is_some_and(|c| self.letter(c).learned) {
+            self.focus = None;
         }
     }
 
@@ -262,14 +278,30 @@ impl Stats {
         Some(next)
     }
 
-    /// The unlocked letter that most needs practice: of the ones not learned yet (they hold
-    /// back the next unlock), the furthest from learning it.
-    pub fn focus(&self, t: Targets) -> Option<char> {
+    /// The letter progressive tests focus on.
+    pub fn focus(&self) -> Option<char> {
+        self.focus.filter(|c| self.unlocked.contains(c))
+    }
+
+    /// Focus on `c` from now on (if it's unlocked).
+    pub fn set_focus(&mut self, c: char) {
+        if self.unlocked.contains(&c) {
+            self.focus = Some(c);
+        }
+    }
+
+    /// Give progressive mode a focus letter if it has none: the unlocked letter that most needs
+    /// practice. Of the ones not learned yet (they hold back the next unlock), that's the
+    /// furthest from learning it.
+    pub fn ensure_focus(&mut self, t: Targets) {
+        if self.focus().is_some() {
+            return;
+        }
         let learn = t.to_learn();
-        self.unlocked.iter().copied().min_by(|a, b| {
+        self.focus = self.unlocked.iter().copied().min_by(|a, b| {
             let (a, b) = (self.letter(*a), self.letter(*b));
             a.learned.cmp(&b.learned).then(a.skill(learn).total_cmp(&b.skill(learn)))
-        })
+        });
     }
 
     /// The `n` weakest letters with enough data to judge.
@@ -423,6 +455,68 @@ mod tests {
         s.update_learned(&p, t);
         assert!(s.letter('e').learned);
         assert_eq!(s.letter('e').focus_tests, 2);
+    }
+
+    #[test]
+    fn focus_sticks_until_learned() {
+        let layout = gallium();
+        let p = Progression::for_layout(&layout);
+        let t = Targets { wpm: 30.0, accuracy: 0.95, focus_tests: 1 };
+        let mut s = Stats::default();
+        s.sync_layout(&layout);
+        s.ensure_started(&p);
+        // Every starting letter fast and accurate, but none has had a focus test yet.
+        let fast = Keystroke { expected: 'x', correct: true, interval: Some(Duration::from_millis(200)), at: Duration::ZERO };
+        let ks: Vec<Keystroke> =
+            s.unlocked.clone().into_iter().flat_map(|c| vec![Keystroke { expected: c, ..fast.clone() }; 20]).collect();
+        s.record(&ks, &layout);
+        s.update_learned(&p, t);
+        s.ensure_focus(t);
+        let focus = s.focus().unwrap();
+        // Slipping on another letter makes it the weakest, but doesn't take the focus.
+        let other = *s.unlocked.iter().find(|c| **c != focus).unwrap();
+        s.record(&vec![Keystroke { expected: other, correct: false, ..fast.clone() }; 5], &layout);
+        s.update_learned(&p, t);
+        s.ensure_focus(t);
+        assert_eq!(s.focus(), Some(focus));
+        // Learning the focus letter moves the focus on, to the letter that needs it most.
+        s.count_focus_test(focus);
+        s.update_learned(&p, t);
+        assert!(s.letter(focus).learned);
+        s.ensure_focus(t);
+        assert_eq!(s.focus(), Some(other));
+    }
+
+    #[test]
+    fn picking_the_focus() {
+        let layout = gallium();
+        let p = Progression::for_layout(&layout);
+        let t = Targets { wpm: 30.0, accuracy: 0.95, focus_tests: 1 };
+        let mut s = Stats::default();
+        s.sync_layout(&layout);
+        s.ensure_started(&p);
+        s.ensure_focus(t);
+        s.set_focus('r');
+        s.ensure_focus(t);
+        assert_eq!(s.focus(), Some('r'));
+        s.set_focus('q');
+        assert_eq!(s.focus(), Some('r'), "locked letters can't be the focus");
+    }
+
+    #[test]
+    fn relearning_takes_half_the_focus_tests() {
+        let t = Targets { wpm: 30.0, accuracy: 0.95, focus_tests: 10 };
+        let mut s = LetterStats { samples: 50, avg_ms: Some(300.0), accuracy: Some(1.0), focus_tests: 12, ..Default::default() };
+        s.update_learned(t, MIN_SAMPLES);
+        assert!(s.learned);
+        assert_eq!(s.focus_tests_left(t), 0);
+        s.accuracy = Some(0.5);
+        s.update_learned(t, MIN_SAMPLES);
+        assert!(!s.learned);
+        assert_eq!((s.focus_tests, s.focus_tests_left(t)), (5, 5));
+        // With its focus tests done, it still needs a test that beats the targets.
+        s.focus_tests = 10;
+        assert_eq!(s.focus_tests_left(t), 1);
     }
 
     #[test]

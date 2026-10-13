@@ -36,7 +36,7 @@ fn untyped() -> Style {
 
 pub fn draw(f: &mut Frame, app: &App) {
     match &app.screen {
-        Screen::Typing => draw_typing(f, app, "tab new test · esc settings"),
+        Screen::Typing => draw_typing(f, app, typing_actions(app)),
         Screen::Results(view) => draw_results(f, app, view),
         Screen::Settings(menu) => {
             draw_typing(f, app, settings_actions(menu));
@@ -92,6 +92,11 @@ fn draw_bottom(f: &mut Frame, app: &App, area: Rect, actions: &[&str]) {
     }
     let lines: Vec<Line> = actions.iter().map(|a| Line::styled(a.to_string(), dim())).collect();
     f.render_widget(Paragraph::new(lines).alignment(Alignment::Center), keys);
+}
+
+/// What can be pressed on the typing screen.
+fn typing_actions(app: &App) -> &'static str {
+    if app.can_switch_focus() { "tab new test · ←→ focus letter · esc settings" } else { "tab new test · esc settings" }
 }
 
 /// What can be pressed in the settings menu right now.
@@ -207,10 +212,14 @@ fn text_lines(t: &TypingTest, width: usize) -> (Vec<Line<'static>>, (u16, u16)) 
 const BOARD_LIFT: u16 = 6;
 
 /// Space left for the board after the fixed rows on the typing screen.
-const TYPING_CHROME: u16 = 1 + 1 + 1 + 1 + TEXT_GAP + TEXT_LINES as u16 + PROGRESS_H + 1 + 1 + 1 + BOTTOM_H;
+const TYPING_CHROME: u16 = 1 + 1 + INFO_H + TEXT_GAP + TEXT_LINES as u16 + PROGRESS_H + 1 + 1 + 1 + BOTTOM_H;
+
+/// Lines above the text: what the mode is working on (one or two), then the test's setup or
+/// live numbers.
+const INFO_H: u16 = 3;
 
 /// Blank lines between the info lines and the text to type.
-const TEXT_GAP: u16 = 3;
+const TEXT_GAP: u16 = 2;
 
 /// The progress bar, right under the text's rows (the text rarely fills all of them, so
 /// there's usually space above it).
@@ -230,38 +239,61 @@ fn ngram_set_span(set: [&str; 3], style: Style) -> Span<'static> {
     Span::styled(set.join("  "), style)
 }
 
-/// What the current mode is working on: the letter strip in progressive mode, the weakest
-/// letters in weak keys mode, the set in n-grams mode. (The line under it names the mode, so
-/// this doesn't.)
+/// What the current mode is working on: the letter strip and the focus letter in progressive
+/// mode, the weakest letters in weak keys mode, the set in n-grams mode. (The line under them
+/// names the mode, so they don't.)
+fn mode_lines(app: &App) -> Vec<Line<'static>> {
+    if app.mode_needs_layout() {
+        return vec![Line::styled("needs your layout (connect your Voyager once) · using words for now", dim())];
+    }
+    match app.store.saved.settings.mode {
+        Mode::Progressive => vec![letter_strip(app), focus_line(app)],
+        _ => vec![mode_line(app)],
+    }
+}
+
+/// The focus letter, and how many tests it has to go.
+fn focus_line(app: &App) -> Line<'static> {
+    let Some(c) = app.stats.focus().filter(|_| app.progression.is_some()) else { return Line::default() };
+    let left = match app.stats.letter(c).focus_tests_left(app.store.saved.settings.targets()) {
+        0 => "learned".to_string(),
+        1 => "1 test until learned".to_string(),
+        n => format!("{n} tests until learned"),
+    };
+    Line::from(vec![
+        Span::styled("focus ", dim()),
+        Span::styled(c.to_string(), Style::new().fg(theme::ACCENT).bold()),
+        Span::styled(format!(" · {left}"), dim()),
+    ])
+}
+
+/// Progressive mode's letters in unlock order: locked ones dim, learned ones green, the focus
+/// letter highlighted.
+fn letter_strip(app: &App) -> Line<'static> {
+    let Some(p) = &app.progression else { return Line::default() };
+    let focus = app.stats.focus();
+    let mut spans = Vec::new();
+    for c in &p.order {
+        let style = if !app.stats.unlocked.contains(c) {
+            dim()
+        } else if app.stats.letter(*c).learned {
+            Style::new().fg(theme::CORRECT)
+        } else {
+            Style::new().fg(Color::Reset)
+        };
+        let style = if Some(*c) == focus { style.fg(theme::ACCENT).bold().underlined() } else { style };
+        spans.push(Span::styled(c.to_string(), style));
+        spans.push(Span::raw(" "));
+    }
+    Line::from(spans)
+}
+
+/// The one-line summary for modes other than progressive.
 fn mode_line(app: &App) -> Line<'static> {
     let s = &app.store.saved.settings;
     let target = s.targets();
-    if app.mode_needs_layout() {
-        return Line::styled("needs your layout (connect your Voyager once) · using words for now", dim());
-    }
     match s.mode {
-        Mode::Words => Line::default(),
-        Mode::Progressive => {
-            let Some(p) = &app.progression else { return Line::default() };
-            let focus = app.stats.focus(target);
-            let mut spans = Vec::new();
-            for c in &p.order {
-                let style = if !app.stats.unlocked.contains(c) {
-                    dim()
-                } else if app.stats.letter(*c).learned {
-                    Style::new().fg(theme::CORRECT)
-                } else {
-                    Style::new().fg(Color::Reset)
-                };
-                let style = if Some(*c) == focus { style.fg(theme::ACCENT).bold().underlined() } else { style };
-                spans.push(Span::styled(c.to_string(), style));
-                spans.push(Span::raw(" "));
-            }
-            if let Some(c) = focus {
-                spans.push(Span::styled(format!("  focus {c}"), dim()));
-            }
-            Line::from(spans)
-        }
+        Mode::Words | Mode::Progressive => Line::default(),
         Mode::Ngrams => {
             let set = app.stats.ngram_sets % ngrams::SETS + 1;
             Line::from(vec![
@@ -304,17 +336,16 @@ fn draw_typing(f: &mut Frame, app: &App, actions: &str) {
     // Spare height: half above the text; the rest goes between the text and the board and
     // below the board, with the board lifted BOARD_LIFT lines off where a 5:3 split would
     // put it. Keeps the test clearly separated without pinning the keyboard to the bottom.
-    let fixed = 1 + 1 + 1 + TEXT_GAP + TEXT_LINES as u16 + PROGRESS_H + 1 + board_h + 1 + BOTTOM_H;
+    let fixed = 1 + INFO_H + TEXT_GAP + TEXT_LINES as u16 + PROGRESS_H + 1 + board_h + 1 + BOTTOM_H;
     let spare = area.height.saturating_sub(fixed);
     let above_text = spare / 2;
     // (Rounded, and always leaving a line between the text and the board.)
     let below_board = ((spare * 3 + 8) / 16 + BOARD_LIFT).min((spare - above_text).saturating_sub(1));
     let above_board = spare - above_text - below_board;
-    let [status, _, mode, stats, _, text, progress, _, caption, board, _, foot, _] = Split::vertical([
+    let [status, _, info, _, text, progress, _, caption, board, _, foot, _] = Split::vertical([
         Constraint::Length(1),
         Constraint::Length(above_text),
-        Constraint::Length(1),
-        Constraint::Length(1),
+        Constraint::Length(INFO_H),
         // Gap so the text to type stands on its own below the info lines.
         Constraint::Length(TEXT_GAP),
         Constraint::Length(TEXT_LINES as u16),
@@ -346,11 +377,14 @@ fn draw_typing(f: &mut Frame, app: &App, actions: &str) {
         parts.join(" · ")
     };
     let text_area = centered(text, text_w + 1);
-    // What this mode is working on, shown before a test starts; hidden while typing.
-    if !t.is_started() {
-        f.render_widget(Paragraph::new(mode_line(app)), centered(mode, text_w + 1));
+    // What this mode is working on, shown before a test starts and blanked while typing (so
+    // the numbers under it stay put).
+    let mut info_lines = mode_lines(app);
+    if t.is_started() {
+        info_lines.iter_mut().for_each(|l| *l = Line::default());
     }
-    f.render_widget(Paragraph::new(Line::styled(stats_text, dim())), centered(stats, text_w + 1));
+    info_lines.push(Line::styled(stats_text, dim()));
+    f.render_widget(Paragraph::new(info_lines), centered(info, text_w + 1));
     let (lines, (row, col)) = text_lines(t, text_w as usize);
     f.render_widget(Paragraph::new(lines), text_area);
     // The terminal's cursor, shaped by the Cursor setting. Hidden while settings are open.
@@ -450,17 +484,20 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
         missed_line,
         Line::default(),
     ];
-    lines.push(match app.just_unlocked {
-        Some(c) => Line::from(vec![
+    // What's next: the mode's lines, with news about this test in place of the first.
+    let mut next = mode_lines(app);
+    if let Some(c) = app.just_unlocked {
+        next[0] = Line::from(vec![
             Span::styled("new letter unlocked: ", Style::new().fg(theme::CORRECT)),
             Span::styled(c.to_string(), Style::new().fg(theme::CORRECT).bold()),
-        ]),
-        None if app.ngrams_passed => Line::from(vec![
+        ]);
+    } else if app.ngrams_passed {
+        next[0] = Line::from(vec![
             Span::styled("passed! next up  ", Style::new().fg(theme::CORRECT)),
             ngram_set_span(app.ngram_set(), Style::new().fg(theme::CORRECT).bold()),
-        ]),
-        None => mode_line(app),
-    });
+        ]);
+    }
+    lines.extend(next);
     let summary_h = lines.len() as u16;
 
     // Status, summary, actions, graph header, graph, its keys (with gaps); the board only if
@@ -489,7 +526,11 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
 
     f.render_widget(Paragraph::new(status_line(app)).alignment(Alignment::Center), status);
     f.render_widget(Paragraph::new(lines).alignment(Alignment::Center), summary);
-    let keys = "tab next test · r retry · esc settings · q quit";
+    let keys = if app.can_switch_focus() {
+        "tab next test · r retry · ←→ focus letter · esc settings · q quit"
+    } else {
+        "tab next test · r retry · esc settings · q quit"
+    };
     f.render_widget(Paragraph::new(Line::styled(keys, dim())).alignment(Alignment::Center), actions);
     let chart_w = CHART_MAX_W.min(area.width.saturating_sub(4));
     draw_chart(f, view, centered(chart_head, chart_w), centered(chart, chart_w));

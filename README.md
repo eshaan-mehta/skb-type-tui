@@ -10,7 +10,8 @@ to the Voyager or learning a new layout.
 ```
                            ZSA Voyager · QWERTY · Base
 
-   a s d l f k j e i h t o r n u c g m w y p b v x q z   focus a
+   a s d l f k j e i h t o r n u c g m w y p b v x q z
+   focus a · 10 tests until learned
    progressive · 25 words · hints on
 
    al alsall add saff all all kaslak fall dal lad fall la la dall al lad
@@ -34,7 +35,7 @@ to the Voyager or learning a new layout.
                          ╰───╯│Spc│          │Bsp│╰───╯
                               ╰───╯          ╰───╯
 
-                           tab new test · esc settings
+                  tab new test · ←→ focus letter · esc settings
 ```
 
 <sub>The typing screen in progressive mode, on a QWERTY layout. In the terminal, locked letters are dimmed,
@@ -68,13 +69,14 @@ details come from your layout instead of assuming QWERTY:
   English (on QWERTY `e i h t o r n u …`, on Colemak-DH `h l d u m c …`);
 - tests use only the letters you've unlocked: real words when there are enough of them, and pronounceable
   made-up ones to fill in while your set is small;
-- the letter that needs the most work comes up more often, and gets drilled in common patterns too (`on on`,
-  `ion ion`, `tion tion` for an `o`).
+- each test focuses on one letter: it comes up more often, and gets drilled in common patterns too (`on on`,
+  `ion ion`, `tion tion` for an `o`). The focus starts on the letter that needs the most work and stays there
+  until it's learned, so slipping on another letter doesn't pull it away. `←→` picks a different one.
 
 A new letter unlocks once every current letter is learned, meaning it's been the focus of 10 tests (you can
 change how many) and you've beaten your speed and accuracy targets on it by a small margin. It stays learned
-unless you fall well below them, so one bad test doesn't set you back. Each new letter needs a little more
-practice than the one before.
+unless you fall well below them, so one bad test doesn't set you back; if you do lose it, relearning it takes
+half the focus tests. Each new letter needs a little more practice than the one before.
 
 ### More ways to practice
 
@@ -103,9 +105,10 @@ read the exact numbers at any second.
 
                                 missed  l ×1   s ×1
 
-           a s d l f k j e i h t o r n u c g m w y p b v x q z   focus j
+               a s d l f k j e i h t o r n u c g m w y p b v x q z
+                         focus j · 7 tests until learned
 
-                  tab next test · r retry · esc settings · q quit
+        tab next test · r retry · ←→ focus letter · esc settings · q quit
 
                                   wpm  accuracy
 150 ┤┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
@@ -177,8 +180,8 @@ layer changes either, so the overlay flashes keys based on what you type and sta
 
 | Where | Keys |
 | --- | --- |
-| Typing | type to start · `tab` new test · `esc` settings · `ctrl+w` / `alt+backspace` delete a word · `ctrl+c` quit |
-| Results | `tab` / `enter` next test · `r` retry the same text · `↑↓` / `j k` switch between the wpm and accuracy graphs · `e` expand the graph · `esc` settings · `q` quit |
+| Typing | type to start · `tab` new test · `←→` pick the focus letter (progressive mode) · `esc` settings · `ctrl+w` / `alt+backspace` delete a word · `ctrl+c` quit |
+| Results | `tab` / `enter` next test · `r` retry the same text · `←→` pick the focus letter for the next test (progressive mode) · `↑↓` / `j k` switch between the wpm and accuracy graphs · `e` expand the graph · `esc` settings · `q` quit |
 | Expanded graph | `←→` / `h l` step through the test (`home` / `end` jump to the ends) · `↑↓` / `j k` wpm or accuracy · `e` / `esc` shrink |
 | Settings | `↑↓` / `j k` move · type a setting's name to jump to it · `enter` change · `←→` adjust · `esc` close |
 | Layout editor | arrows, or press a key on the board, to select · `enter` change the key · `del` undo your change · `tab` next layer · `ctrl+s` save · `esc` cancel |
