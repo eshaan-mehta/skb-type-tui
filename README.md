@@ -13,8 +13,8 @@ to the Voyager or learning a new layout.
    a s d l f k j e i h t o r n u c g m w y p b v x q z   focus a
    progressive · 25 words · hints on
 
-   al alsall add saff kaslak fall saff dal fall lad fall dall al lad dal
-   sad fall flad as lak as saddld fal slad aslad
+   al alsall add saff all all kaslak fall dal lad fall la la dall al lad
+   sad fall flad al al lak saddld slad aslad
 
    ────────────────────────────────────────────────────────────────────────
 
@@ -68,7 +68,8 @@ details come from your layout instead of assuming QWERTY:
   English (on QWERTY `e i h t o r n u …`, on Colemak-DH `h l d u m c …`);
 - tests use only the letters you've unlocked: real words when there are enough of them, and pronounceable
   made-up ones to fill in while your set is small;
-- the letter that needs the most work comes up more often.
+- the letter that needs the most work comes up more often, and gets drilled in common patterns too (`on on`,
+  `ion ion`, `tion tion` for an `o`).
 
 A new letter unlocks once every current letter is learned, meaning you've beaten your speed and accuracy
 targets on it by a small margin. It stays learned unless you fall well below them, so one bad test doesn't set
@@ -215,7 +216,8 @@ border says how to press it (`hold`, `2×`, `t+hld`).
   definition.
 - **Progression** (`src/stats.rs`, `src/generator.rs`): the starting letters come from your resting keys, and
   the unlock order weighs how easy each key is to reach against how common its letter is. Made-up words come
-  from a letter model trained on the built-in word list. Each letter's speed and accuracy are running averages.
+  from a letter model trained on the built-in word list, and the patterns a focus letter is drilled in are the
+  sequences with that letter found in the most words. Each letter's speed and accuracy are running averages.
 - **N-grams** (`src/ngrams.rs`): the sequences are ranked by how often they occur inside words in Google Books,
   from Peter Norvig's [Mayzner Revisited](https://norvig.com/mayzner.html) counts.
 

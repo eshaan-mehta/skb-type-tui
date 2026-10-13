@@ -4,9 +4,10 @@
 //! Otherwise the gaps are filled with pronounceable pseudo-words from a letter model
 //! trained on English words ("tesh", "rean", ...), like keybr does.
 //!
-//! Also builds n-grams mode drills.
+//! Also builds n-grams mode drills, and finds the common letter patterns ("on", "ion",
+//! "tion") that progressive mode drills its focus letter with.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use rand::{Rng, RngExt};
 
@@ -18,6 +19,16 @@ const END: char = '$';
 const REAL_WORDS_FOR_FULL_TEXT: f64 = 40.0;
 const MIN_LEN: usize = 2;
 const MAX_LEN: usize = 7;
+/// Chance that a word in a focused test is swapped for a pattern with the focus letter.
+const PATTERN_CHANCE: f64 = 0.15;
+/// A pattern is typed this many times in a row.
+const PATTERN_REPEATS: usize = 2;
+/// Patterns are this long...
+const PATTERN_LENS: std::ops::RangeInclusive<usize> = 2..=4;
+/// ...and a letter is drilled with up to this many of each length.
+const PATTERNS_PER_LEN: usize = 3;
+/// A letter sequence has to be in this many words to count as a pattern.
+const MIN_PATTERN_WORDS: u32 = 3;
 /// In n-grams mode, the most words in a row on one n-gram.
 const DRILL_RUN: usize = 6;
 
@@ -106,6 +117,8 @@ pub struct Generator {
     /// Words the other modes pick from.
     corpus: Vec<String>,
     model: LetterModel,
+    /// Letter sequences in the words the model learns from, in the most words first.
+    patterns: Vec<String>,
 }
 
 impl Generator {
@@ -119,8 +132,10 @@ impl Generator {
         // Letter patterns come from the built-in words plus any plain lowercase custom words,
         // so pseudo-words stay pronounceable even with a small or unusual list.
         let lowercase_custom = corpus.iter().filter(|w| w.chars().all(|c| c.is_ascii_lowercase()));
-        let model = LetterModel::train(builtin.iter().chain(lowercase_custom).map(String::as_str));
-        Generator { plain, corpus, model }
+        let training: Vec<&str> = builtin.iter().chain(lowercase_custom).map(String::as_str).collect();
+        let model = LetterModel::train(training.iter().copied());
+        let patterns = common_patterns(&training);
+        Generator { plain, corpus, model, patterns }
     }
 
     /// `count` random words for words mode.
@@ -137,14 +152,30 @@ impl Generator {
             .collect()
     }
 
+    /// The most common letter patterns with `focus` in them that can be typed with `allowed`:
+    /// a few each of two, three and four letters.
+    pub fn patterns(&self, focus: char, allowed: &BTreeSet<char>) -> Vec<&str> {
+        PATTERN_LENS
+            .flat_map(|len| {
+                self.patterns
+                    .iter()
+                    .map(String::as_str)
+                    .filter(move |p| p.len() == len && p.contains(focus) && p.chars().all(|c| allowed.contains(&c)))
+                    .take(PATTERNS_PER_LEN)
+            })
+            .collect()
+    }
+
     /// `count` words using only `allowed` letters. Letters with a higher `weight` show up more,
-    /// and about half the words contain `focus`.
+    /// and about half the words contain `focus`. Now and then a pair of `patterns` (letter
+    /// sequences to drill) stands in for a word.
     pub fn text(
         &self,
         rng: &mut impl Rng,
         allowed: &BTreeSet<char>,
         weight: &dyn Fn(char) -> f64,
         focus: Option<char>,
+        patterns: &[&str],
         count: usize,
     ) -> String {
         let real = self.real_words(allowed);
@@ -159,7 +190,19 @@ impl Generator {
             .collect();
 
         let mut out: Vec<String> = Vec::with_capacity(count);
-        for _ in 0..count {
+        let mut last_pattern = None;
+        while out.len() < count {
+            if !patterns.is_empty() && rng.random_bool(PATTERN_CHANCE) {
+                // A different one from last time, when there's a choice.
+                let options: Vec<&str> =
+                    patterns.iter().copied().filter(|p| patterns.len() == 1 || Some(*p) != last_pattern).collect();
+                let p = options[rng.random_range(0..options.len())];
+                for _ in 0..PATTERN_REPEATS.min(count - out.len()) {
+                    out.push(p.to_string());
+                }
+                last_pattern = Some(p);
+                continue;
+            }
             let want_focus = focus.is_some() && rng.random_bool(0.5);
             let mut chosen = None;
             for _ in 0..40 {
@@ -229,6 +272,35 @@ impl Generator {
     }
 }
 
+/// Letter sequences (`PATTERN_LENS` long) that at least `MIN_PATTERN_WORDS` of `words` have,
+/// in the most words first. `words` are plain lowercase. Sequences of three or more letters
+/// that are mostly part of one a letter longer ("tio", nearly always in "tion") are left out.
+fn common_patterns(words: &[&str]) -> Vec<String> {
+    // Words with each sequence, counting one letter longer than patterns go, to spot fragments.
+    let lens = *PATTERN_LENS.start()..=*PATTERN_LENS.end() + 1;
+    let mut counts: HashMap<&str, u32> = HashMap::new();
+    for w in words.iter().copied().collect::<BTreeSet<_>>() {
+        let in_word: HashSet<&str> =
+            lens.clone().flat_map(|len| (0..(w.len() + 1).saturating_sub(len)).map(move |i| &w[i..i + len])).collect();
+        for p in in_word {
+            *counts.entry(p).or_default() += 1;
+        }
+    }
+    let fragment = |p: &str, n: u32| {
+        p.len() >= 3
+            && ('a'..='z').any(|c| {
+                [format!("{c}{p}"), format!("{p}{c}")].iter().any(|longer| counts.get(longer.as_str()).is_some_and(|m| 3 * m >= 2 * n))
+            })
+    };
+    let mut common: Vec<(&str, u32)> = counts
+        .iter()
+        .map(|(p, n)| (*p, *n))
+        .filter(|(p, n)| PATTERN_LENS.contains(&p.len()) && *n >= MIN_PATTERN_WORDS && !fragment(p, *n))
+        .collect();
+    common.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    common.into_iter().map(|(p, _)| p.to_string()).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,7 +317,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(1);
         for letters in ["etainshr", "asdfjkl", "asdfjklei"] {
             let allowed = set(letters);
-            let text = g.text(&mut rng, &allowed, &|_| 1.0, None, 50);
+            let text = g.text(&mut rng, &allowed, &|_| 1.0, None, &[], 50);
             assert_eq!(text.split(' ').count(), 50);
             for c in text.chars().filter(|c| *c != ' ') {
                 assert!(allowed.contains(&c), "{c} in {text}");
@@ -260,7 +332,7 @@ mod tests {
         let allowed = set("asdfjkl");
         let real = g.real_words(&allowed);
         assert!(real.len() < 10);
-        let text = g.text(&mut rng, &allowed, &|_| 1.0, None, 30);
+        let text = g.text(&mut rng, &allowed, &|_| 1.0, None, &[], 30);
         assert!(text.split(' ').any(|w| !real.contains(&w)), "{text}");
     }
 
@@ -280,9 +352,42 @@ mod tests {
     fn focus_letter_shows_up() {
         let g = Generator::new(None);
         let mut rng = StdRng::seed_from_u64(3);
-        let text = g.text(&mut rng, &set("etainshro"), &|_| 1.0, Some('o'), 40);
+        let text = g.text(&mut rng, &set("etainshro"), &|_| 1.0, Some('o'), &[], 40);
         let with_o = text.split(' ').filter(|w| w.contains('o')).count();
         assert!(with_o >= 15, "{with_o}: {text}");
+    }
+
+    #[test]
+    fn patterns_feature_the_focus_letter() {
+        let g = Generator::new(None);
+        let allowed = set("etainshro");
+        let patterns = g.patterns('o', &allowed);
+        assert!(patterns.contains(&"on") && patterns.contains(&"ion"), "{patterns:?}");
+        for p in &patterns {
+            assert!(p.contains('o') && p.chars().all(|c| allowed.contains(&c)), "{p}");
+            assert!((2..=4).contains(&p.len()), "{p}");
+        }
+        assert!(patterns.iter().any(|p| p.len() == 4), "{patterns:?}");
+        // Not pieces of longer patterns: "tio" is nearly always in "tion".
+        assert!(patterns.contains(&"tion") && !patterns.contains(&"tio"), "{patterns:?}");
+        // Every letter has some, once there are letters to go with it.
+        let all = set("abcdefghijklmnopqrstuvwxyz");
+        for c in 'a'..='z' {
+            assert!(!g.patterns(c, &all).is_empty(), "{c}");
+        }
+    }
+
+    #[test]
+    fn focused_text_drills_patterns_in_pairs() {
+        let g = Generator::new(None);
+        let mut rng = StdRng::seed_from_u64(5);
+        let allowed = set("etainshro");
+        let patterns = g.patterns('o', &allowed);
+        let text = g.text(&mut rng, &allowed, &|_| 1.0, Some('o'), &patterns, 200);
+        let words: Vec<&str> = text.split(' ').collect();
+        assert_eq!(words.len(), 200);
+        let pairs = words.windows(2).filter(|w| w[0] == w[1] && patterns.contains(&w[0])).count();
+        assert!((20..=45).contains(&pairs), "{pairs} pattern pairs: {text}");
     }
 
     #[test]
@@ -328,7 +433,10 @@ mod samples {
         for letters in ["etainshr", "etainshro", "etainshrodlcu", "asdfjkl", "asdfjklei"] {
             let allowed: BTreeSet<char> = letters.chars().collect();
             println!("[{letters}] ({} real words)", g.real_words(&allowed).len());
-            println!("  {}\n", g.text(&mut rng, &allowed, &|_| 1.0, letters.chars().last(), 20));
+            let focus = letters.chars().last();
+            let patterns = focus.map(|f| g.patterns(f, &allowed)).unwrap_or_default();
+            println!("  patterns {patterns:?}");
+            println!("  {}\n", g.text(&mut rng, &allowed, &|_| 1.0, focus, &patterns, 20));
         }
         for i in 0..3 {
             println!("{:?}\n  {}\n", crate::ngrams::set(i), g.ngram_drill(&mut rng, &crate::ngrams::set(i), 25));

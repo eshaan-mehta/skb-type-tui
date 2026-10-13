@@ -570,14 +570,16 @@ impl App {
                     let w = 1.0 + 2.0 * stats.weakness(c, target);
                     if Some(c) == focus { w * 2.0 } else { w }
                 };
-                TypingTest::from_text(&self.generator.text(&mut rng, &allowed, &weight, focus, count))
+                // Drill the focus letter in common patterns too ("on", "ion", "tion").
+                let patterns = focus.map(|f| self.generator.patterns(f, &allowed)).unwrap_or_default();
+                TypingTest::from_text(&self.generator.text(&mut rng, &allowed, &weight, focus, &patterns, count))
             }
             (Mode::WeakKeys, Some(layout), _) => {
                 let allowed: BTreeSet<char> = ('a'..='z').filter(|c| layout.find_char(*c).is_some()).collect();
                 let focus = self.stats.weakest(1, target).first().copied();
                 let stats = &self.stats;
                 let weight = |c: char| stats.weakness(c, target);
-                TypingTest::from_text(&self.generator.text(&mut rng, &allowed, &weight, focus, count))
+                TypingTest::from_text(&self.generator.text(&mut rng, &allowed, &weight, focus, &[], count))
             }
             (Mode::Ngrams, _, _) => {
                 self.test_ngram_set = Some(self.stats.ngram_sets);
