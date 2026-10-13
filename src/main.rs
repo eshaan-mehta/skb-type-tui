@@ -40,6 +40,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    theme::detect();
     let mut terminal = ratatui::init();
     let result = app::App::new().run(&mut terminal);
     // Give back the terminal's own cursor shape (the app sets one from the Cursor setting).

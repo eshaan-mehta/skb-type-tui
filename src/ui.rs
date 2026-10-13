@@ -434,7 +434,22 @@ fn draw_typing(f: &mut Frame, app: &App, actions: &str) {
         }
     }
 
+    // With the settings menu open over it, everything above the keys fades back so the menu
+    // stands out. (The keys at the bottom are the menu's, so they stay as they are.)
+    if matches!(app.screen, Screen::Settings(_)) {
+        f.buffer_mut().set_style(Rect { height: foot.y - area.y, ..area }, faded());
+    }
     draw_bottom(f, app, foot, &[actions]);
+}
+
+/// Background behind a menu: everything at low opacity (faint gray, if the terminal didn't say
+/// what its colors are), with no fills, bold or underlines.
+fn faded() -> Style {
+    let style = match theme::faded() {
+        Some(c) => Style::new().fg(c).remove_modifier(Modifier::DIM),
+        None => untyped(),
+    };
+    style.bg(Color::Reset).remove_modifier(Modifier::BOLD | Modifier::UNDERLINED)
 }
 
 /// Height of the results graph, including its axis labels.
