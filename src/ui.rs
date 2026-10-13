@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, BorderType, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::{
-    find_setting, number_field, App, BoardPicker, ChartView, DeviceState, Editor, EditorPurpose, ResultsView, Screen,
+    adjustable, find_setting, number_field, App, BoardPicker, ChartView, DeviceState, Editor, EditorPurpose, ResultsView, Screen,
     SettingsMenu, SETTINGS_ITEMS,
 };
 use crate::board::{Board, HintRole, KeyVisual, Marker, Scale};
@@ -940,11 +940,8 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
         .enumerate()
         .map(|(i, name)| {
             let selected = i == menu.selected;
-            let unit = match *name {
-                "Target speed" => " wpm",
-                "Target accuracy" => "%",
-                _ => "",
-            };
+            // (Speeds are in wpm, as everywhere, so only accuracy needs a unit.)
+            let unit = if *name == "Target accuracy" { "%" } else { "" };
             let value = match (*name, &menu.editing) {
                 (_, Some(entry)) if selected && !entry.is_path => format!("{}▏{unit}", entry.text),
                 ("Word list", _) => match &app.word_list {
@@ -968,6 +965,8 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
                 _ if number_field(name).is_some() => format!("{}{unit}", app.number_value(name)),
                 _ => String::new(),
             };
+            // On the selected setting, arrows show ←→ change it.
+            let value = if selected && menu.editing.is_none() && adjustable(name) { format!("< {value} >") } else { value };
             let marker = if selected { "› " } else { "  " };
             let style = if selected { accent } else { Style::new() };
             Line::styled(format!("{marker}{name:<42}{value:>20}"), style)

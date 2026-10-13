@@ -64,6 +64,14 @@ pub fn number_field(item: &str) -> Option<(std::ops::RangeInclusive<u32>, u32)> 
     }
 }
 
+/// Settings whose value ←→ changes: choices to step through, and numbers.
+pub fn adjustable(item: &str) -> bool {
+    number_field(item).is_some() || CHOICES.contains(&item)
+}
+
+/// Settings with a few values to step through (enter steps forward too).
+const CHOICES: [&str; 4] = ["Mode", "Hints", "Cursor", "Instant death"];
+
 /// The value after (or before) `current` in `all`, wrapping around.
 fn cycle<T: Copy + PartialEq>(all: &[T], current: T, forward: bool) -> T {
     let n = all.len();
@@ -1030,7 +1038,7 @@ impl App {
             return;
         }
         match item {
-            "Mode" | "Hints" | "Cursor" | "Instant death" => self.adjust_setting(item, true),
+            _ if CHOICES.contains(&item) => self.adjust_setting(item, true),
             "Board" => self.screen = Screen::Board(BoardPicker::new(false, self.store.saved.keyboard)),
             "Edit layout" | "Refetch layout from board" if self.store.saved.keyboard.is_none() => {
                 self.set_notice("Pick your keyboard first, under Board.")
@@ -1212,6 +1220,7 @@ mod tests {
 
     #[test]
     fn type_to_jump() {
+        assert!(CHOICES.iter().all(|c| SETTINGS_ITEMS.contains(c)));
         let name = |s: &str| find_setting(s).map(|i| SETTINGS_ITEMS[i]);
         assert_eq!(name("r"), Some("Refetch layout from board"));
         assert_eq!(name("res"), Some("Reset progress"));
