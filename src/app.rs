@@ -21,12 +21,13 @@ use crate::ngrams;
 use crate::oryx;
 use crate::stats::{Progression, Stats, Targets};
 use crate::store::{
-    CursorStyle, LayoutRef, Mode, Store, FOCUS_TESTS_RANGE, TARGET_ACCURACY_RANGE, TARGET_WPM_RANGE, WORD_COUNT_RANGE,
+    CursorStyle, Keyboard, LayoutRef, Mode, Store, FOCUS_TESTS_RANGE, TARGET_ACCURACY_RANGE, TARGET_WPM_RANGE,
+    WORD_COUNT_RANGE,
 };
 use crate::typing::{Second, TypingTest};
 use crate::ui;
 
-pub const SETTINGS_ITEMS: [&str; 13] = [
+pub const SETTINGS_ITEMS: [&str; 14] = [
     "Mode",
     "Hints",
     "Cursor",
@@ -36,6 +37,7 @@ pub const SETTINGS_ITEMS: [&str; 13] = [
     "Target speed",
     "Target accuracy",
     "Focus tests per letter",
+    "Board",
     "Edit layout",
     "Refetch layout from board",
     "Reset progress",
@@ -233,11 +235,29 @@ impl ResultsView {
     }
 }
 
+/// Picking the keyboard: at first launch, and from settings.
+pub struct BoardPicker {
+    /// Index into `Keyboard::ALL`.
+    pub selected: usize,
+    /// First launch, where esc skips setting a keyboard up (rather than cancelling a change).
+    pub onboarding: bool,
+    /// Why the last pick didn't go through.
+    pub message: Option<String>,
+}
+
+impl BoardPicker {
+    fn new(onboarding: bool, current: Option<Keyboard>) -> Self {
+        let selected = current.and_then(|k| Keyboard::ALL.iter().position(|o| *o == k)).unwrap_or(0);
+        BoardPicker { selected, onboarding, message: None }
+    }
+}
+
 pub enum Screen {
     Typing,
     Results(ResultsView),
     Settings(SettingsMenu),
     Editor(Box<Editor>),
+    Board(BoardPicker),
 }
 
 pub struct FlashState {
@@ -325,6 +345,10 @@ impl App {
         };
         app.on_layout_changed();
         app.test = app.make_test();
+        // First launch: start by asking which keyboard this is.
+        if app.store.saved.keyboard.is_none() {
+            app.screen = Screen::Board(BoardPicker::new(true, None));
+        }
         if let Some(n) = startup_notice {
             app.set_notice(n);
         }
@@ -393,18 +417,11 @@ impl App {
             DeviceEvent::Missing => self.set_disconnected(DeviceState::Missing),
             DeviceEvent::WrongBoard(name) => self.set_disconnected(DeviceState::WrongBoard(name)),
             DeviceEvent::Connected { firmware_id, live, .. } => {
-                self.device = DeviceState::Connected { firmware_id: firmware_id.clone(), live };
+                self.device = DeviceState::Connected { firmware_id, live };
                 self.active_layer = 0;
-                match firmware_id.as_deref().and_then(oryx::parse_firmware_id) {
-                    Some((layout_id, revision_id)) => self.ensure_layout(&layout_id, &revision_id),
-                    None if self.layout.is_none() => {
-                        let mut ed = self.editor(EditorPurpose::Manual, Layout::empty("manual", "manual"));
-                        ed.message = Some(
-                            "Your board didn't report an Oryx layout, so set your keys by hand.".into(),
-                        );
-                        self.open_editor(ed);
-                    }
-                    None => {}
+                // Not before the user has said this is their keyboard.
+                if self.store.saved.keyboard == Some(Keyboard::Voyager) {
+                    self.load_board_layout();
                 }
             }
             DeviceEvent::KeyDown(k) => {
@@ -418,6 +435,21 @@ impl App {
             }
             DeviceEvent::KeyUp(k) => self.held[k] = false,
             DeviceEvent::Layer(l) => self.active_layer = l,
+        }
+    }
+
+    /// Load the layout the connected board says it's running (fetching it if need be), or have
+    /// the user enter it if the board can't say.
+    fn load_board_layout(&mut self) {
+        let DeviceState::Connected { firmware_id, .. } = &self.device else { return };
+        match firmware_id.clone().as_deref().and_then(oryx::parse_firmware_id) {
+            Some((layout_id, revision_id)) => self.ensure_layout(&layout_id, &revision_id),
+            None if self.layout.is_none() => {
+                let mut ed = self.editor(EditorPurpose::Manual, Layout::empty("manual", "manual"));
+                ed.message = Some("Your board didn't report an Oryx layout, so set your keys by hand.".into());
+                self.open_editor(ed);
+            }
+            None => {}
         }
     }
 
@@ -542,6 +574,7 @@ impl App {
             Screen::Results(_) => self.on_results_key(key),
             Screen::Settings(_) => self.on_settings_key(key),
             Screen::Editor(_) => self.on_editor_key(key),
+            Screen::Board(_) => self.on_board_key(key),
         }
     }
 
@@ -750,6 +783,48 @@ impl App {
         }
     }
 
+    fn on_board_key(&mut self, key: KeyEvent) {
+        let Screen::Board(picker) = &mut self.screen else { return };
+        let n = Keyboard::ALL.len();
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                picker.selected = (picker.selected + n - 1) % n;
+                picker.message = None;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                picker.selected = (picker.selected + 1) % n;
+                picker.message = None;
+            }
+            KeyCode::Enter => match Keyboard::ALL[picker.selected] {
+                board if board.supported() => self.pick_board(board),
+                _ => picker.message = Some("Other keyboards aren't supported yet. QMK and ZMK boards are coming.".into()),
+            },
+            KeyCode::Esc => {
+                let onboarding = picker.onboarding;
+                self.screen = Screen::Typing;
+                if onboarding {
+                    self.set_notice("No keyboard set up, so it's a plain typing test. Pick one from settings (esc) any time.");
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Use `board` from now on, and load its layout.
+    fn pick_board(&mut self, board: Keyboard) {
+        self.screen = Screen::Typing;
+        if self.store.saved.keyboard == Some(board) {
+            return;
+        }
+        self.store.saved.keyboard = Some(board);
+        self.persist();
+        if self.device.is_connected() {
+            self.load_board_layout();
+        } else if self.layout.is_none() {
+            self.set_notice("Plug in your Voyager and its layout will load.");
+        }
+    }
+
     fn on_settings_key(&mut self, key: KeyEvent) {
         let Screen::Settings(menu) = &mut self.screen else { return };
         let item = SETTINGS_ITEMS[menu.selected];
@@ -942,6 +1017,10 @@ impl App {
         }
         match item {
             "Mode" | "Hints" | "Cursor" | "Instant death" => self.adjust_setting(item, true),
+            "Board" => self.screen = Screen::Board(BoardPicker::new(false, self.store.saved.keyboard)),
+            "Edit layout" | "Refetch layout from board" if self.store.saved.keyboard.is_none() => {
+                self.set_notice("Pick your keyboard first, under Board.")
+            }
             "Reset progress" => {
                 self.stats = Stats::default();
                 self.on_layout_changed();
@@ -1075,6 +1154,11 @@ impl App {
         self.flashes.iter().find(|f| f.key == key).map(|f| f.kind)
     }
 
+    /// Whether to draw the keyboard: one's been picked, and it's plugged in.
+    pub fn shows_board(&self) -> bool {
+        self.store.saved.keyboard.is_some_and(Keyboard::supported) && self.device.is_connected()
+    }
+
     pub fn hints_on(&self) -> bool {
         self.store.saved.settings.hints
     }
@@ -1122,6 +1206,7 @@ mod tests {
         assert_eq!(name("speed"), Some("Target speed"));
         assert_eq!(name("f"), Some("Focus tests per letter"));
         assert_eq!(name("focus"), Some("Focus tests per letter"));
+        assert_eq!(name("b"), Some("Board"));
         assert_eq!(name("q"), Some("Quit"));
         assert_eq!(name("inst"), Some("Instant death"));
         assert_eq!(name("death"), Some("Instant death"));

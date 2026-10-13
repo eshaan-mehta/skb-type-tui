@@ -40,6 +40,31 @@ impl Mode {
     }
 }
 
+/// The keyboard the app is set up for.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Keyboard {
+    /// ZSA Voyager: its layout comes from Oryx, and it reports key presses and layers live.
+    Voyager,
+    /// Any other keyboard. Not supported yet (QMK and ZMK boards are planned).
+    Other,
+}
+
+impl Keyboard {
+    pub const ALL: [Keyboard; 2] = [Keyboard::Voyager, Keyboard::Other];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Keyboard::Voyager => "ZSA Voyager",
+            Keyboard::Other => "Other (currently unsupported)",
+        }
+    }
+
+    pub fn supported(self) -> bool {
+        self == Keyboard::Voyager
+    }
+}
+
 /// The shape of the typing cursor.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -124,10 +149,23 @@ pub struct LayoutRef {
 #[serde(default)]
 pub struct Saved {
     pub settings: Settings,
+    /// The keyboard the user picked; None until they do.
+    pub keyboard: Option<Keyboard>,
     /// The layout revision the user last confirmed.
     pub confirmed: Option<LayoutRef>,
     /// The user's corrections, applied on top of whichever revision is confirmed.
     pub edits: Vec<Edit>,
+}
+
+impl Saved {
+    /// Fill in what older saves didn't record.
+    fn upgraded(mut self) -> Self {
+        // A layout confirmed before there was a choice of keyboard was a Voyager's.
+        if self.keyboard.is_none() && self.confirmed.is_some() {
+            self.keyboard = Some(Keyboard::Voyager);
+        }
+        self
+    }
 }
 
 pub struct Store {
@@ -154,7 +192,7 @@ fn app_dir(config: &Path) -> PathBuf {
 impl Store {
     pub fn open() -> Self {
         let dir = app_dir(&dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")));
-        let saved = read_json(&dir.join("state.json")).unwrap_or_default();
+        let saved = read_json::<Saved>(&dir.join("state.json")).unwrap_or_default().upgraded();
         Store { dir, saved }
     }
 
@@ -208,6 +246,13 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn older_saves_were_for_a_voyager() {
+        let confirmed = Some(LayoutRef { layout_id: "a".into(), revision_id: "b".into() });
+        assert_eq!(Saved { confirmed, ..Default::default() }.upgraded().keyboard, Some(Keyboard::Voyager));
+        assert_eq!(Saved::default().upgraded().keyboard, None, "a fresh start asks");
+    }
 
     #[test]
     fn data_moves_over_from_the_old_name() {

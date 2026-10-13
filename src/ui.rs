@@ -9,15 +9,15 @@ use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
 use ratatui::Frame;
 
 use crate::app::{
-    find_setting, number_field, App, ChartView, DeviceState, Editor, EditorPurpose, ResultsView, Screen, SettingsMenu,
-    SETTINGS_ITEMS,
+    find_setting, number_field, App, BoardPicker, ChartView, DeviceState, Editor, EditorPurpose, ResultsView, Screen,
+    SettingsMenu, SETTINGS_ITEMS,
 };
 use crate::board::{Board, HintRole, KeyVisual, Marker, Scale};
 use crate::geometry::KEY_COUNT;
 use crate::layout::{Layout, Press};
 use crate::ngrams;
 use crate::stats::MIN_SAMPLES;
-use crate::store::Mode;
+use crate::store::{Keyboard, Mode};
 use crate::theme;
 use crate::typing::TypingTest;
 
@@ -43,17 +43,25 @@ pub fn draw(f: &mut Frame, app: &App) {
             draw_settings(f, app, menu);
         }
         Screen::Editor(ed) => draw_editor(f, app, ed),
+        Screen::Board(picker) => draw_board_picker(f, app, picker),
     }
 }
 
 // ----- shared pieces -----
 
 fn status_line(app: &App) -> Line<'static> {
+    if app.store.saved.keyboard.is_none() {
+        let found = match &app.device {
+            DeviceState::Connected { .. } => "found a ZSA Voyager · ",
+            _ => "",
+        };
+        return Line::styled(format!("{found}no keyboard set up · esc → Board"), dim());
+    }
     match &app.device {
         DeviceState::Searching => Line::styled("looking for your voyager…", dim()),
         DeviceState::Missing => Line::styled("Your voyager is missing", Style::new().fg(theme::WARNING)),
         DeviceState::WrongBoard(name) => Line::styled(
-            format!("Your voyager is missing (found a {name}; this app is built for the Voyager)"),
+            format!("Your voyager is missing (found a {name}, which isn't supported yet)"),
             Style::new().fg(theme::WARNING),
         ),
         DeviceState::Connected { live, .. } => {
@@ -244,7 +252,12 @@ fn ngram_set_span(set: [&str; 3], style: Style) -> Span<'static> {
 /// names the mode, so they don't.)
 fn mode_lines(app: &App) -> Vec<Line<'static>> {
     if app.mode_needs_layout() {
-        return vec![Line::styled("needs your layout (connect your Voyager once) · using words for now", dim())];
+        let needs = if app.store.saved.keyboard.is_none() {
+            "needs your keyboard set up (esc → Board)"
+        } else {
+            "needs your layout (connect your Voyager once)"
+        };
+        return vec![Line::styled(format!("{needs} · using words for now"), dim())];
     }
     match app.store.saved.settings.mode {
         Mode::Progressive => vec![letter_strip(app), focus_line(app)],
@@ -328,7 +341,7 @@ fn mode_line(app: &App) -> Line<'static> {
 
 fn draw_typing(f: &mut Frame, app: &App, actions: &str) {
     let area = f.area();
-    let show_board = app.device.is_connected();
+    let show_board = app.shows_board();
     let scale = if show_board { Scale::fit(area.width, area.height.saturating_sub(TYPING_CHROME)) } else { None };
     let board_h = scale.map_or(if show_board { 1 } else { 0 }, |s| s.height());
     let text_w = TEXT_WIDTH.min(area.width.saturating_sub(4)).max(10);
@@ -504,7 +517,7 @@ fn draw_results(f: &mut Frame, app: &App, view: &ResultsView) {
     // it still fits. A test too short to graph gets just the header, saying so.
     let chart_h = if view.has_graph() { CHART_H } else { 0 };
     let fixed = 1 + summary_h + 1 + 1 + 1 + 1 + chart_h + BOTTOM_H + 1;
-    let show_board = app.device.is_connected() && app.layout.is_some();
+    let show_board = app.shows_board() && app.layout.is_some();
     let scale = if show_board { Scale::fit(area.width, area.height.saturating_sub(fixed + 2)) } else { None };
 
     // After a test the next step matters more than the graph or the keyboard, so the actions
@@ -867,6 +880,7 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
                     None => "built-in".to_string(),
                 },
                 ("Mode", _) => s.mode.name().to_string(),
+                ("Board", _) => app.store.saved.keyboard.map_or("not set", Keyboard::name).to_string(),
                 ("Hints", _) => if s.hints { "on" } else { "off" }.to_string(),
                 ("Cursor", _) => s.cursor.name().to_string(),
                 ("Instant death", _) => if s.instant_death { "on" } else { "off" }.to_string(),
@@ -920,6 +934,71 @@ fn draw_settings(f: &mut Frame, app: &App, menu: &SettingsMenu) {
     lines.push(status);
     lines.push(detail);
     f.render_widget(Paragraph::new(lines), inner.inner(ratatui::layout::Margin { horizontal: 1, vertical: 0 }));
+}
+
+/// Which keyboard is this? Lists the boards, marks the one plugged in, and says when a choice
+/// isn't supported yet.
+fn draw_board_picker(f: &mut Frame, app: &App, picker: &BoardPicker) {
+    let area = f.area();
+    let [_, title, sub, _, options, _, found, message, _, foot, _] = Split::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(Keyboard::ALL.len() as u16),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(BOTTOM_H),
+        Constraint::Fill(1),
+    ])
+    .areas(area);
+    let center = |line: Line<'static>| Paragraph::new(line).alignment(Alignment::Center);
+    f.render_widget(center(Line::styled("Which keyboard are you using?", Style::new().bold())), title);
+    f.render_widget(center(Line::styled("it's drawn on screen, with your own layout, as you type", dim())), sub);
+
+    // What's plugged in, as far as we can tell.
+    let detected = match &app.device {
+        DeviceState::Connected { .. } => Some(Keyboard::Voyager),
+        DeviceState::WrongBoard(_) => Some(Keyboard::Other),
+        _ => None,
+    };
+    let lines: Vec<Line> = Keyboard::ALL
+        .iter()
+        .enumerate()
+        .map(|(i, k)| {
+            let selected = i == picker.selected;
+            let style = match (selected, k.supported()) {
+                (true, _) => Style::new().fg(theme::ACCENT),
+                (false, true) => Style::new(),
+                (false, false) => dim(),
+            };
+            let marker = if selected { "› " } else { "  " };
+            let tag = if detected == Some(*k) { "detected" } else { "" };
+            Line::from(vec![
+                Span::styled(format!("{marker}{:<32}", k.name()), style),
+                Span::styled(tag, Style::new().fg(theme::CORRECT)),
+            ])
+        })
+        .collect();
+    f.render_widget(Paragraph::new(lines), centered(options, 42));
+
+    let found_line = match &app.device {
+        DeviceState::Searching => Line::styled("looking for your keyboard…", dim()),
+        DeviceState::Connected { .. } => Line::styled("found a ZSA Voyager plugged in", Style::new().fg(theme::CORRECT)),
+        DeviceState::WrongBoard(name) => {
+            Line::styled(format!("found a {name}, which isn't supported yet"), Style::new().fg(theme::WARNING))
+        }
+        DeviceState::Missing => Line::styled("no supported keyboard plugged in", dim()),
+    };
+    f.render_widget(center(found_line), found);
+    if let Some(m) = &picker.message {
+        f.render_widget(center(Line::styled(m.clone(), Style::new().fg(theme::WARNING))), message);
+    }
+
+    let esc = if picker.onboarding { "esc skip for now" } else { "esc cancel" };
+    draw_bottom(f, app, foot, &[&format!("↑↓/jk choose · enter confirm · {esc}")]);
 }
 
 fn draw_editor(f: &mut Frame, app: &App, ed: &Editor) {

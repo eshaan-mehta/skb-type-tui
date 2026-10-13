@@ -1,11 +1,14 @@
 # skb-type-tui
 
-A minimal, [monkeytype](https://monkeytype.com)-style typing test that runs in your terminal, made for the
-[ZSA Voyager](https://www.zsa.io/voyager). Use it to get faster, or just to practice.
+A minimal, [monkeytype](https://monkeytype.com)-style typing test that runs in your terminal, made for split
+and ergonomic keyboards. Use it to get faster, or just to practice.
 
 What sets it apart: it reads the exact configuration on your board, every layer included, and draws it on
 screen while you type. The keys you see are always your keys, which makes it especially useful if you're new
-to the Voyager or learning a new layout.
+to your board or learning a new layout.
+
+**Supported keyboards:** for now, the [ZSA Voyager](https://www.zsa.io/voyager). Support for other QMK and ZMK
+keyboards is planned.
 
 ```
                            ZSA Voyager · QWERTY · Base
@@ -38,16 +41,16 @@ to the Voyager or learning a new layout.
                   tab new test · ←→ focus letter · esc settings
 ```
 
-<sub>The typing screen in progressive mode, on a QWERTY layout. In the terminal, locked letters are dimmed,
-learned ones turn green, and keys light up on the board as you press them.</sub>
+<sub>The typing screen in progressive mode, on a Voyager with a QWERTY layout. In the terminal, locked letters
+are dimmed, learned ones turn green, and keys light up on the board as you press them.</sub>
 
 ## Features
 
 ### Your board, on screen
 
-The app asks your Voyager which layout it's running and fetches the full keymap from Oryx: every layer, plus
-holds, double taps and tap-then-holds. It draws the board in its real shape (staggered columns, split halves,
-thumb keys) and keeps it live while you type:
+On a Voyager, the app asks the board which layout it's running and fetches the full keymap from Oryx: every
+layer, plus holds, double taps and tap-then-holds. It draws the board in its real shape (staggered columns,
+split halves, thumb keys) and keeps it live while you type:
 
 - it follows the layer you're on;
 - keys light up as you press them, reported by the board itself rather than guessed from what you typed;
@@ -65,7 +68,7 @@ details come from your layout instead of assuming QWERTY:
 
 - you start with the letters under your resting fingers (on QWERTY `a s d f j k l`, on Colemak-DH
   `a r s t n e i o`);
-- new letters unlock in order of how easy their key is to reach on the Voyager and how common they are in
+- new letters unlock in order of how easy their key is to reach on your board and how common they are in
   English (on QWERTY `e i h t o r n u …`, on Colemak-DH `h l d u m c …`);
 - tests use only the letters you've unlocked: real words when there are enough of them, and pronounceable
   made-up ones to fill in while your set is small;
@@ -126,7 +129,7 @@ read the exact numbers at any second.
                           ↑↓/jk wpm/accuracy · e expand
 ```
 
-No Voyager plugged in? It still works as a typing test, just without the board on screen.
+No supported keyboard, or none plugged in? It still works as a typing test, just without the board on screen.
 
 ## Install
 
@@ -136,7 +139,7 @@ cargo install skb-type-tui
 
 You'll need Rust, which you can get from [rustup.rs](https://rustup.rs). On Linux, building also needs the
 libudev headers and pkg-config (`sudo apt install libudev-dev pkg-config` on Debian and Ubuntu, or your
-distribution's equivalent), and reading the board needs ZSA's udev rules (see their
+distribution's equivalent), and reading a Voyager needs ZSA's udev rules (see their
 [Linux setup guide](https://github.com/zsa/wally/wiki/Linux-install)).
 
 To build from source instead:
@@ -149,15 +152,17 @@ cargo install --path .
 
 ## Getting started
 
-Plug in your Voyager and run:
+Plug in your keyboard and run:
 
 ```sh
 skb-type-tui
 ```
 
-The first time, it fetches your layout from Oryx and shows it to you. Check the keys (`tab` flips through the
-layers), fix any that are wrong, and save with `ctrl+s`. From then on it only fetches again when you flash a
-new revision.
+The first time, it asks which keyboard you're using, and points out the one that's plugged in when it can tell.
+For now that's the ZSA Voyager; other keyboards aren't supported yet. Confirm it, and the app fetches your
+layout from Oryx and shows it to you. Check the keys (`tab` flips through the layers), fix any that are wrong,
+and save with `ctrl+s`. From then on it only fetches again when you flash a new revision. You can change
+keyboards later, under *Board* in the settings.
 
 Then start typing: the test begins with your first key. `tab` gives you a new test, and `esc` opens the
 settings, where you can switch modes.
@@ -168,8 +173,10 @@ layer changes either, so the overlay flashes keys based on what you type and sta
 
 ### Requirements
 
-- A ZSA Voyager. Loading your layout automatically, and seeing your key presses and layers live, needs a
-  layout made in [Oryx](https://configure.zsa.io); any other layout can be entered by hand.
+- A supported keyboard, for now the ZSA Voyager, to see your board on screen. Loading your layout
+  automatically, and seeing your key presses and layers live, needs a layout made in
+  [Oryx](https://configure.zsa.io); any other layout can be entered by hand. Without one it's a plain typing
+  test.
 - A terminal at least 80 columns wide and 31 lines tall to see the board (smaller works, the board is just
   hidden). The board and graph are drawn with box-drawing and braille characters, which most terminals show
   fine.
@@ -184,6 +191,7 @@ layer changes either, so the overlay flashes keys based on what you type and sta
 | Results | `tab` / `enter` next test · `r` retry the same text (after an instant death, the only way on) · `←→` pick the focus letter for the next test (progressive mode) · `↑↓` / `j k` switch between the wpm and accuracy graphs · `e` expand the graph · `esc` settings · `q` quit |
 | Expanded graph | `←→` / `h l` step through the test (`home` / `end` jump to the ends) · `↑↓` / `j k` wpm or accuracy · `e` / `esc` shrink |
 | Settings | `↑↓` / `j k` move · type a setting's name to jump to it · `enter` change · `←→` adjust · `esc` close |
+| Keyboard picker | `↑↓` / `j k` choose · `enter` confirm · `esc` skip for now (or cancel, from the settings) |
 | Layout editor | arrows, or press a key on the board, to select · `enter` change the key · `del` undo your change · `tab` next layer · `ctrl+s` save · `esc` cancel |
 
 In the layout editor, each of a key's four actions (tap, hold, double tap, tap-then-hold; `tab` switches
@@ -205,6 +213,7 @@ border says how to press it (`hold`, `2×`, `t+hld`).
 | Target speed | the speed a letter needs to count as learned in progressive mode, and a test needs to move on in n-grams mode (10–200 wpm) |
 | Target accuracy | the accuracy they need alongside that (50–100%) |
 | Focus tests per letter | how many tests a letter has to be the focus of, in progressive mode, before it can count as learned (0–20; 0 turns this off) |
+| Board | the keyboard you're using (for now only the ZSA Voyager is supported) |
 | Edit layout | fix keys by hand |
 | Refetch layout from board | fetch your flashed layout from Oryx again |
 | Reset progress | clear your letter stats, progressive unlocks and n-grams progress |

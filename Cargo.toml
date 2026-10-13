@@ -2,10 +2,10 @@
 name = "skb-type-tui"
 version = "0.1.0"
 edition = "2024"
-description = "A minimalistic TUI typing test for the ZSA Voyager"
+description = "A minimalistic TUI typing test for split and ergonomic keyboards"
 license = "MIT"
 repository = "https://github.com/eshaan-mehta/skb-type-tui"
-keywords = ["typing", "keyboard", "zsa", "voyager", "tui"]
+keywords = ["typing", "split-keyboard", "ergonomic-keyboard", "voyager", "tui"]
 categories = ["command-line-utilities", "hardware-support"]
 
 [dependencies]

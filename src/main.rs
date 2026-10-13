@@ -15,7 +15,7 @@ mod ui;
 mod words;
 
 const USAGE: &str = "\
-skb-type-tui: a typing trainer for the ZSA Voyager
+skb-type-tui: a typing trainer for split and ergonomic keyboards
 
 usage: skb-type-tui [--hid-debug | --help]
 
